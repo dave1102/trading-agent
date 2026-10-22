@@ -207,6 +207,34 @@ also fixed in advance: beat an equal-weight basket of all coins on Sharpe ratio
 **and** have a worst drawdown at least a third smaller, in both periods and in
 every coin group (the original 3, the 10 new coins, all 13).
 
+### Step 4d: New meme coin scanner (Solana, Base, BNB Chain, Ethereum)
+
+```powershell
+python -m trading_agent.memescan run --every 15   # leave running; Ctrl+C to stop
+python -m trading_agent.memescan report           # check progress any time (in another terminal)
+```
+
+Paper only: it reads public data and never holds a wallet or keys. Each round it:
+
+1. **Finds** new and trending pools on each chain (GeckoTerminal).
+2. **Screens** them. Market rules: 15 minutes to 24 hours old, at least $20,000
+   liquidity, 50+ trades in the last hour, real sellers, not an established coin,
+   not copying a top-250 coin's ticker. Scam checks (GoPlus Security, plus RugCheck
+   on Solana): no honeypot, taxes at most 5%, creator cannot mint more or freeze
+   tokens, top 10 wallets hold at most 30%, at least 90% of liquidity locked or
+   burned. **Anything that cannot be checked fails.**
+3. **Journals** every pick, plus a random 20% of rejected pools as a comparison group.
+4. **Tracks** each one 1 hour, 1 day and 7 days later, after estimated costs for a
+   $100 paper trade (DEX fee, price impact, token tax, gas). If liquidity falls 90%
+   or the pool disappears, it counts as a rug pull: -100%.
+
+Files are in `data\memecoins\`: `candidates.csv` (every pool judged, with reasons)
+and `checks.csv` (results). All rules are in `[memecoins]` in `config.toml`.
+
+The report answers two questions: do picks make money after costs, and do they do
+better than the comparison group (that is, do the rules help)? Wait for 100+ picks
+per checkpoint before drawing conclusions.
+
 ### Step 5: Paper trade
 
 ```powershell

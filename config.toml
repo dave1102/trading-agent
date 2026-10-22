@@ -19,6 +19,24 @@ symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT",
            "DOT/USDT", "LTC/USDT", "BNB/USDT", "TRX/USDT", "ATOM/USDT"]
 original = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
 
+[memecoins]
+# New-token scanner (paper only). GeckoTerminal network ids.
+networks = ["solana", "base", "bsc", "eth"]
+pages = 1                       # pages of new pools and of trending pools per network, per scan
+min_age_minutes = 15            # younger pools are "not ready yet" and re-checked later
+max_age_hours = 24
+min_liquidity_usd = 20000
+min_trades_h1 = 50              # buys + sells in the last hour
+max_tax = 0.05                  # buy/sell/transfer tax
+max_top10_share = 0.30          # 10 biggest ordinary wallets (EVM chains)
+min_lp_locked = 0.90            # share of liquidity locked or burned
+control_rate = 0.2              # share of failing pools tracked as a comparison group
+control_min_liquidity_usd = 1000
+# Paper-trade cost model
+trade_usd = 100
+dex_fee = 0.003                 # per swap
+gas_usd = { solana = 0.01, base = 0.05, bsc = 0.10, eth = 3.0 }   # per swap
+
 [funding]
 # Market-wide sentiment from perpetual-futures funding rates (public data).
 # Deribit has hourly history from 2022 for BTC and ETH; used as inputs for every coin.
