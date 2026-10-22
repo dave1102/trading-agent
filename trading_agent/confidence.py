@@ -97,6 +97,7 @@ def main() -> None:
     parser.add_argument("--horizon", type=int, default=1, help="candles ahead the model predicts")
     parser.add_argument("--holdout-start", default="2025-01-01")
     parser.add_argument("--leader", default="BTC/USDT", help="market leader used for +market inputs")
+    parser.add_argument("--symbols", nargs="+", help="override crypto symbols from config.toml")
     args = parser.parse_args()
 
     cfg = load_config()
@@ -107,7 +108,7 @@ def main() -> None:
         df = load_ohlcv(data_path("crypto", symbol, cfg["crypto"]["timeframe"]))
         return df if tf == cfg["crypto"]["timeframe"] else resample_ohlcv(df, tf)
 
-    frames = {s: load(s) for s in cfg["crypto"]["symbols"]}
+    frames = {s: load(s) for s in (args.symbols or cfg["crypto"]["symbols"])}
     leader = frames.get(args.leader)
     if leader is None:
         leader = load(args.leader)

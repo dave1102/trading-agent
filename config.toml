@@ -1,9 +1,10 @@
 # Project settings. Edit this file to change which markets you research.
 
 [crypto]
-# Any exchange CCXT supports with public OHLCV data. If "binance" is blocked
-# in your region, try "bybit" or "okx".
-exchange = "binance"
+# Any exchange CCXT supports with public OHLCV data. MEXC is reachable from this
+# PC's network and has hourly history from 2022. (Colab uses "binanceus" instead.)
+# Keep one exchange per data file: switching mixes prices and volumes.
+exchange = "mexc"
 # Add altcoins freely, e.g. "XRP/USDT", "ADA/USDT", "AVAX/USDT".
 symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
 timeframe = "1h"

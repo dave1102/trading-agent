@@ -120,8 +120,9 @@ month by month, so ask for finished years only.
 **Crypto** (BTC, ETH, SOL; add more in `config.toml`):
 
 ```powershell
-python -m trading_agent.download crypto
-python -m trading_agent.download crypto --exchange binanceus   # another exchange
+python -m trading_agent.download crypto                         # exchange from config.toml (MEXC)
+python -m trading_agent.download crypto --symbols XRP/USDT ADA/USDT --start 2022-01-01
+python -m trading_agent.download crypto --exchange binanceus    # another exchange
 ```
 
 Run it again later to add only the newest candles. If your network blocks
@@ -266,6 +267,10 @@ These are research results, not advice, and they will change as data grows.
   (about +0.25%, profit factor about 1.6), but with just 14–16 trades in 22 months,
   far too few to trust. Funding rates added nothing clear. On daily candles every
   input set lost money.
+- **That 70% result was luck.** Tested unchanged on 10 coins it had never seen
+  (XRP, ADA, DOGE, AVAX, LINK, DOT, LTC, BNB, TRX, ATOM), the same setup made
+  93 trades, won 55% of them, and lost 0.25% per trade (profit factor 0.73).
+  Testing a promising setup on fresh symbols is a fast way to catch a fluke.
 - **A more flexible model did worse.** Gradient boosting traded more, learned noise
   and lost more than logistic regression.
 - **Data note:** HistData's 2023 files are missing many whole hours from February
