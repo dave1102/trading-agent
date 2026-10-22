@@ -4,10 +4,12 @@ __pycache__/
 .venv/
 .pytest_cache/
 
-# Downloaded market data and trained models (large, re-creatable)
-data/
-models/
-paper_accounts/
+# Downloaded market data, trained models, paper accounts (large, re-creatable).
+# The leading "/" means "only at the project root", so trading_agent/models/ (code) is kept.
+/data/
+/models/
+/paper_accounts/
+/trading-agent.zip
 
 # Secrets must never be committed (this project should not need any)
 .env
