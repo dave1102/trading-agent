@@ -169,6 +169,16 @@ def test_safe_text_defuses_spreadsheet_formulas():
     assert journal.safe_text("PEPE") == "PEPE"
 
 
+def test_only_one_scanner_can_run(tmp_path):
+    lock = tmp_path / "scanner.lock"
+    with memescan.single_instance(lock):
+        with pytest.raises(SystemExit, match="already running"):
+            with memescan.single_instance(lock):
+                pass
+    with memescan.single_instance(lock):  # free again once the first one stopped
+        pass
+
+
 def test_scan_track_report_end_to_end(tmp_path, capsys):
     candidates, checks = tmp_path / "candidates.csv", tmp_path / "checks.csv"
     routes = {

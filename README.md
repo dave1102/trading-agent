@@ -231,6 +231,15 @@ Paper only: it reads public data and never holds a wallet or keys. Each round it
 Files are in `data\memecoins\`: `candidates.csv` (every pool judged, with reasons)
 and `checks.csv` (results). All rules are in `[memecoins]` in `config.toml`.
 
+**Start it automatically when you sign in to Windows:** put a shortcut to
+`start_scanner.cmd` in your Startup folder (press `Win+R`, type `shell:startup`,
+press Enter, then right-click → New → Shortcut). Set the shortcut's **Run** option to
+**Minimized**. The scanner then runs in a minimised window and writes to
+`data\memecoins\scanner.log`. Close that window to stop it; delete the shortcut to
+stop it starting automatically. Only one scanner can run at a time, so starting a
+second copy by hand simply exits. Your PC must be awake for it to scan (set sleep to
+"Never" while collecting data).
+
 The report answers two questions: do picks make money after costs, and do they do
 better than the comparison group (that is, do the rules help)? Wait for 100+ picks
 per checkpoint before drawing conclusions.

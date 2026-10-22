@@ -8,8 +8,11 @@ Examples:
 """
 
 import argparse
+import os
 import random
 import time
+import traceback
+from contextlib import contextmanager
 
 import pandas as pd
 import requests
@@ -26,6 +29,7 @@ DATA_DIR = PROJECT_ROOT / "data" / "memecoins"
 CANDIDATES = DATA_DIR / "candidates.csv"
 CHECKS = DATA_DIR / "checks.csv"
 TOP_SYMBOLS = DATA_DIR / "top_symbols.json"
+LOCK_FILE = DATA_DIR / "scanner.lock"
 NOT_READY = {"too new", "low liquidity", "little trading", "nobody has sold (possible honeypot)"}
 
 
@@ -159,12 +163,41 @@ def main() -> None:
     elif args.command == "report":
         report()
     else:
-        print(f"Scanning every {args.every:g} minutes. Leave this window open; press Ctrl+C to stop.")
-        while True:
-            print(f"\n[{pd.Timestamp.now(tz='UTC'):%Y-%m-%d %H:%M} UTC] scan")
-            scan(client, cfg, rng, top_symbols=top())
-            track(client, cfg)
-            time.sleep(args.every * 60)
+        with single_instance(LOCK_FILE):
+            print(f"Scanning every {args.every:g} minutes. Leave this window open; press Ctrl+C to stop.")
+            while True:
+                print(f"\n[{pd.Timestamp.now(tz='UTC'):%Y-%m-%d %H:%M} UTC] scan")
+                try:
+                    scan(client, cfg, rng, top_symbols=top())
+                    track(client, cfg)
+                except Exception:  # running unattended: log it and retry next round
+                    traceback.print_exc()
+                time.sleep(args.every * 60)
+
+
+@contextmanager
+def single_instance(path):
+    """Refuse to start if another scanner (e.g. the startup one) already holds the lock.
+
+    The operating system releases the lock automatically if the process stops.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(path, "a+")
+    handle.seek(0)
+    try:
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        raise SystemExit("The scanner is already running (another window or the startup copy). Not starting a second one.")
+    try:
+        yield
+    finally:
+        handle.close()
 
 
 if __name__ == "__main__":
