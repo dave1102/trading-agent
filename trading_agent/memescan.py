@@ -137,7 +137,11 @@ def report(candidates_path=CANDIDATES, checks_path=CHECKS) -> None:
         shown[col] = table[col].map("{:.0%}".format)
     print(f"\nResults after estimated costs (paper trade of ${load_config()['memecoins']['trade_usd']} each):")
     print(shown.to_string(index=False))
-    print("\nTrust this only once each row has 100+ tokens. 'mean_net' is the average result per trade.")
+    print("\nVERDICT")
+    for line in journal.verdict_lines(table):
+        print("  " + line)
+    print("\n'mean_net' is the average result per $100 paper trade. Paper results with an optimistic cost model:")
+    print("real trading would likely do somewhat worse.")
 
 
 def main() -> None:

@@ -236,7 +236,16 @@ and `checks.csv` (results). All rules are in `[memecoins]` in `config.toml`.
 press Enter, then right-click → New → Shortcut). Set the shortcut's **Run** option to
 **Minimized**. The scanner then runs in a minimised window and writes to
 `data\memecoins\scanner.log`. Close that window to stop it; delete the shortcut to
-stop it starting automatically. Only one scanner can run at a time, so starting a
+stop it starting automatically.
+
+**Weekly report:** `weekly_report.cmd` saves the report to
+`data\memecoins\report_YYYY-MM-DD.txt` and opens it in Notepad. On this PC a Windows
+scheduled task named **"Meme scanner weekly report"** runs it every Friday at 12:00
+(or at the next sign-in if the PC was off). Manage or delete it in **Task Scheduler**
+(Start menu → type "Task Scheduler" → Task Scheduler Library). The report ends with a
+plain-English **VERDICT**.
+
+Only one scanner can run at a time, so starting a
 second copy by hand simply exits. Your PC must be awake for it to scan (set sleep to
 "Never" while collecting data).
 

@@ -96,6 +96,29 @@ def due_checks(candidates: pd.DataFrame, checks: pd.DataFrame, now: pd.Timestamp
     return pd.DataFrame(rows)
 
 
+def verdict_lines(table: pd.DataFrame, min_tokens: int = 100) -> list[str]:
+    """Plain-English reading of the summary table, one line per checkpoint."""
+    lines = []
+    for checkpoint in CHECKPOINTS:
+        rows = table[table["checkpoint"] == checkpoint].set_index("group") if not table.empty else table
+        if "pick" not in rows.index:
+            lines.append(f"{checkpoint}: no results yet.")
+            continue
+        pick = rows.loc["pick"]
+        if pick["tokens"] < min_tokens:
+            lines.append(f"{checkpoint}: only {int(pick['tokens'])} picks so far - too early to judge (need {min_tokens}+).")
+            continue
+        money = "MADE money" if pick["mean_net"] > 0 else "LOST money"
+        line = (f"{checkpoint}: picks {money} on average ({pick['mean_net']:+.1%} per trade after costs; "
+                f"{pick['positive']:.0%} ended up, {pick['rugged']:.0%} rugged).")
+        if "control" in rows.index:
+            control = rows.loc["control"]
+            better = "the rules HELPED" if pick["mean_net"] > control["mean_net"] else "the rules did NOT help"
+            line += f" Comparison group: {control['mean_net']:+.1%}, so {better}."
+        lines.append(line)
+    return lines
+
+
 def summarize(checks: pd.DataFrame) -> pd.DataFrame:
     """Per group and checkpoint: how many, median/mean result after costs, share positive, share rugged."""
     if checks.empty:

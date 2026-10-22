@@ -169,6 +169,19 @@ def test_safe_text_defuses_spreadsheet_formulas():
     assert journal.safe_text("PEPE") == "PEPE"
 
 
+def test_verdict_lines():
+    def rows(group, n, mean):
+        return [{"checkpoint": "24h", "group": group, "net_return": mean, "rugged": False}] * n
+
+    early = journal.summarize(pd.DataFrame(rows("pick", 5, 0.1)))
+    assert "too early" in journal.verdict_lines(early)[1]
+
+    checks = pd.DataFrame(rows("pick", 120, -0.05) + rows("control", 120, -0.30))
+    line = journal.verdict_lines(journal.summarize(checks))[1]
+    assert "LOST money" in line and "the rules HELPED" in line
+    assert journal.verdict_lines(journal.summarize(checks))[0] == "1h: no results yet."
+
+
 def test_only_one_scanner_can_run(tmp_path):
     lock = tmp_path / "scanner.lock"
     with memescan.single_instance(lock):
