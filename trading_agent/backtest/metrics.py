@@ -39,6 +39,8 @@ def summarize(result: BacktestResult) -> dict:
         "max_drawdown": max_drawdown(eq),
         "trades": len(trades),
         "win_rate": float((trades["pnl"] > 0).mean()) if len(trades) else float("nan"),
+        # Average profit per trade after all costs, as a share of the position: the number that matters.
+        "avg_trade_return": float(trades["return"].mean()) if len(trades) else float("nan"),
         "profit_factor": profit_factor,
         "fees_paid": float(trades["fees"].sum()),
         "exposure": float((result.positions != 0).mean()),

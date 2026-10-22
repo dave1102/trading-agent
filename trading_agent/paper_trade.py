@@ -66,7 +66,8 @@ def print_summary(account: PaperAccount) -> None:
         closed = trades[trades["action"] == "close"]
         if len(closed):
             pnl = closed["pnl"].astype(float)
-            print(f"Closed trades: {len(closed)}, win rate {(pnl > 0).mean():.1%}, total P&L {pnl.sum():+,.2f}")
+            print(f"Closed trades: {len(closed)}, win rate {(pnl > 0).mean():.1%}, "
+                  f"profit per trade {pnl.mean():+,.2f}, total P&L {pnl.sum():+,.2f}")
             print("Exit reasons:", closed["reason"].value_counts().to_dict())
         rejected = trades[trades["action"] == "rejected"]
         if len(rejected):

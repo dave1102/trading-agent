@@ -9,6 +9,13 @@ symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
 timeframe = "1h"
 start = "2022-01-01"
 
+[funding]
+# Market-wide sentiment from perpetual-futures funding rates (public data).
+# Deribit has hourly history from 2022 for BTC and ETH; used as inputs for every coin.
+exchange = "deribit"
+symbols = ["BTC/USD:BTC", "ETH/USD:ETH"]
+start = "2022-01-01"
+
 [forex]
 # Forex data is imported from CSV files you download from a legitimate
 # historical-data provider (see README). Names have no slash.

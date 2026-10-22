@@ -58,6 +58,7 @@ def run_sweep(
                     "avg_return": folds["return"].mean(),
                     "profitable_folds": int((folds["return"] > 0).sum()),
                     "avg_trades": folds["trades"].mean(),
+                    "profit_per_trade": folds["profit_per_trade"].mean(),
                     "buy_hold_return": folds["buy_hold_return"].mean(),
                 })
     results = pd.DataFrame(rows)
@@ -68,6 +69,7 @@ def run_sweep(
         .agg(avg_return=("avg_return", "mean"),
              profitable_folds=("profitable_folds", "sum"),
              avg_trades=("avg_trades", "mean"),
+             profit_per_trade=("profit_per_trade", "mean"),
              buy_hold_return=("buy_hold_return", "mean"))
         .sort_values("avg_return", ascending=False)
         .reset_index()
@@ -113,8 +115,8 @@ def main() -> None:
         print(f"\nVERDICT - best setting tested once on hidden data from {holdout_start:%Y-%m-%d}: "
               f"{best['timeframe']} candles, horizon {best['horizon']}, threshold {best['threshold']}, "
               f"trend filter {'on' if best['trend_filter'] else 'off'}")
-        print(holdout[["symbol", "test_start", "test_end", "return", "buy_hold_return",
-                       "trades", "max_drawdown", "accuracy"]].to_string(index=False))
+        print(holdout[["symbol", "test_start", "test_end", "return", "buy_hold_return", "trades",
+                       "win_rate", "profit_per_trade", "max_drawdown", "accuracy"]].to_string(index=False))
     print(f"\nAll results saved to {RESULTS_DIR / f'sweep_{args.market}.csv'}")
 
 

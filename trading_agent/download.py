@@ -15,8 +15,8 @@ import pandas as pd
 import requests
 
 from .config import load_config
-from .market_data import crypto, forex, histdata
-from .market_data.storage import data_path, load_ohlcv, save_ohlcv
+from .market_data import crypto, forex, funding, histdata
+from .market_data.storage import RAW_DATA_DIR, data_path, load_ohlcv, save_ohlcv
 from .market_data.validate import find_gaps, resample_ohlcv
 
 
@@ -80,6 +80,21 @@ def download_histdata(cfg: dict, symbols: list[str] | None, years: list[int]) ->
             print(f"  saved to {path}")
 
 
+def download_funding(cfg: dict) -> None:
+    exchange = crypto.make_exchange(cfg["exchange"])
+    for symbol in cfg["symbols"]:
+        path = funding.funding_path(cfg["exchange"], symbol, RAW_DATA_DIR)
+        since = funding.load_funding(path).index[-1] if path.exists() else cfg["start"]
+        print(f"Downloading {cfg['exchange']} funding rates for {symbol} from {since} ...")
+        try:
+            series = funding.fetch_funding_history(symbol, exchange, since)
+        except ccxt.NetworkError as e:
+            print(f"  could not reach {cfg['exchange']}: {type(e).__name__}")
+            continue
+        saved = funding.save_funding(series, path)
+        print(f"  {len(saved):,} rates from {saved.index[0]} to {saved.index[-1]}, saved to {path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Collect historical market data.")
     sub = parser.add_subparsers(dest="market", required=True)
@@ -98,6 +113,8 @@ def main() -> None:
     p_hd.add_argument("--symbols", nargs="+", help="override forex symbols from config.toml")
     p_hd.add_argument("--years", required=True, help="e.g. 2019-2025 or 2020,2022")
 
+    sub.add_parser("funding", help="download futures funding rates (market sentiment) for [funding] in config.toml")
+
     args = parser.parse_args()
     cfg = load_config()
     if args.market == "crypto":
@@ -106,6 +123,8 @@ def main() -> None:
         download_crypto(cfg["crypto"], args.symbols, args.start)
     elif args.market == "histdata":
         download_histdata(cfg["forex"], args.symbols, histdata.parse_years(args.years))
+    elif args.market == "funding":
+        download_funding(cfg["funding"])
     else:
         import_forex(cfg["forex"], args.symbol, args.file, args.format)
 

@@ -84,6 +84,7 @@ def walk_forward(
             "sharpe": model_stats["sharpe"],
             "max_drawdown": model_stats["max_drawdown"],
             "trades": model_stats["trades"],
+            "profit_per_trade": model_stats["avg_trade_return"],
             "buy_hold_return": market_stats["total_return"],
         })
     return pd.DataFrame(rows)
@@ -122,6 +123,8 @@ def holdout_test(
         "sharpe": stats["sharpe"],
         "max_drawdown": stats["max_drawdown"],
         "trades": stats["trades"],
+        "win_rate": stats["win_rate"],
+        "profit_per_trade": stats["avg_trade_return"],
         "buy_hold_return": market["total_return"],
     }
 
@@ -136,6 +139,7 @@ def compare_models(df, model_kinds, model_cfg, costs, risk, n_folds=5) -> tuple[
         avg_sharpe=("sharpe", "mean"),
         worst_drawdown=("max_drawdown", "min"),
         avg_trades=("trades", "mean"),
+        profit_per_trade=("profit_per_trade", "mean"),
         buy_hold_return=("buy_hold_return", "mean"),
     )
     return folds.reset_index(drop=True), summary

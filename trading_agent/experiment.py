@@ -73,9 +73,12 @@ def main() -> None:
 
     table = run_experiment(df, costs, risk_from_config(cfg["risk"]), cfg["model"])
     pct = ["total_return", "cagr", "max_drawdown", "win_rate", "exposure"]
+    table = table.rename(columns={"avg_trade_return": "profit_per_trade"})
+    pct.append("profit_per_trade")
     shown = table.copy().astype(object)
     for col in table.columns:
-        fmt = "{:.1%}" if col in pct else "{:,.0f}" if col in ("trades", "fees_paid") else "{:.2f}"
+        fmt = ("{:.2%}" if col == "profit_per_trade" else "{:.1%}" if col in pct
+               else "{:,.0f}" if col in ("trades", "fees_paid") else "{:.2f}")
         shown[col] = table[col].map(fmt.format)
     print("\n" + shown.to_string())
 

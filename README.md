@@ -173,6 +173,19 @@ combination across all symbols, then tests it **once** on the hidden recent
 period. That last table, the **VERDICT**, is the result to believe. Full results
 are saved to `data\results\sweep_<market>.csv` (opens in Excel).
 
+### Step 4b: Does extra information improve the confident trades?
+
+```powershell
+python -m trading_agent.download funding                      # futures funding rates (Deribit, BTC and ETH)
+python -m trading_agent.confidence                            # 1-hour candles, 1 hour ahead
+python -m trading_agent.confidence --timeframe 1d --horizon 5
+```
+
+This trains on data before 2025 and compares three input sets on the unseen
+period after it: price only, plus market inputs (what BTC is doing, time of day,
+day of week), plus funding rates. For each confidence level it pools the trades of
+all coins and shows win rate, profit per trade and profit factor.
+
 ### Step 5: Paper trade
 
 ```powershell
@@ -244,6 +257,15 @@ These are research results, not advice, and they will change as data grows.
   -11.3% (ETH) and +2.6% (SOL), with accuracy below 50%. It lost less than holding
   in a falling market mostly because it was often out of the market.
 - **Forex: no edge either.** The best setting hardly traded on hidden 2025 data.
+- **A high win rate is easy and means little.** Buying BTC daily with a +0.5% target
+  and -10% stop won 95% of trades in 2025–2026, yet lost 0.38% per trade after costs.
+  Judge strategies by profit per trade and profit factor.
+- **Extra information helped only a little.** With BTC/market and calendar inputs,
+  the model's 65%-confidence trades on 1-hour candles improved from -0.24% to -0.02%
+  per trade (win rate 45% → 52%). Only the 70% level made money per trade
+  (about +0.25%, profit factor about 1.6), but with just 14–16 trades in 22 months,
+  far too few to trust. Funding rates added nothing clear. On daily candles every
+  input set lost money.
 - **A more flexible model did worse.** Gradient boosting traded more, learned noise
   and lost more than logistic regression.
 - **Data note:** HistData's 2023 files are missing many whole hours from February
