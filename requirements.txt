@@ -6,5 +6,8 @@ scikit-learn>=1.4
 # Public crypto market data (no API keys are used anywhere in this project)
 ccxt>=4.2
 
+# Free forex history downloads from HistData.com
+requests>=2.31
+
 # Testing
 pytest>=8.0

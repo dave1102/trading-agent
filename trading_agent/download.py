@@ -4,15 +4,18 @@ Examples:
     python -m trading_agent.download crypto
     python -m trading_agent.download crypto --symbols BTC/USDT ETH/USDT --start 2024-01-01
     python -m trading_agent.download forex --symbol EURUSD --file downloads/DAT_ASCII_EURUSD_M1_2024.csv
+    python -m trading_agent.download histdata --years 2019-2025
 """
 
 import argparse
 from pathlib import Path
 
 import ccxt
+import pandas as pd
+import requests
 
 from .config import load_config
-from .market_data import crypto, forex
+from .market_data import crypto, forex, histdata
 from .market_data.storage import data_path, load_ohlcv, save_ohlcv
 from .market_data.validate import find_gaps, resample_ohlcv
 
@@ -56,6 +59,24 @@ def import_forex(cfg: dict, symbol: str, file: Path, fmt: str) -> None:
     print(f"  saved to {path} (weekend gaps are normal for forex)")
 
 
+def download_histdata(cfg: dict, symbols: list[str] | None, years: list[int]) -> None:
+    timeframe = cfg["timeframe"]
+    for symbol in symbols or cfg["symbols"]:
+        frames = []
+        for year in years:
+            try:
+                csv_path = histdata.download_year(symbol, year)
+            except (RuntimeError, requests.RequestException) as e:
+                print(f"  {symbol} {year}: skipped ({e})")
+                continue
+            frames.append(resample_ohlcv(forex.load_histdata_csv(csv_path), timeframe))
+            print(f"  {symbol} {year}: ok")
+        if frames:
+            path = data_path("forex", symbol, timeframe)
+            summarize(symbol, save_ohlcv(pd.concat(frames), path), timeframe)
+            print(f"  saved to {path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Collect historical market data.")
     sub = parser.add_subparsers(dest="market", required=True)
@@ -69,10 +90,16 @@ def main() -> None:
     p_fx.add_argument("--file", required=True, type=Path)
     p_fx.add_argument("--format", choices=["histdata", "generic"], default="histdata")
 
+    p_hd = sub.add_parser("histdata", help="download forex M1 files from HistData.com and import them")
+    p_hd.add_argument("--symbols", nargs="+", help="override forex symbols from config.toml")
+    p_hd.add_argument("--years", required=True, help="e.g. 2019-2025 or 2020,2022")
+
     args = parser.parse_args()
     cfg = load_config()
     if args.market == "crypto":
         download_crypto(cfg["crypto"], args.symbols, args.start)
+    elif args.market == "histdata":
+        download_histdata(cfg["forex"], args.symbols, histdata.parse_years(args.years))
     else:
         import_forex(cfg["forex"], args.symbol, args.file, args.format)
 
