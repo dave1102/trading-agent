@@ -63,6 +63,10 @@ Every fill is logged to `trades.csv`; run it again to resume.
 # Compare models on several unseen periods (walk-forward):
 python -m trading_agent.evaluate --market forex --symbol EURUSD
 
+# Try 28 settings (candle size, horizon, confidence, trend filter), then test the
+# best one once on locked-away recent data (crypto: 2026, forex: 2025):
+python -m trading_agent.sweep --market crypto
+
 # Package the project for Colab (re-run after every code change):
 git archive --format=zip -o trading-agent.zip HEAD
 ```

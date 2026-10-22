@@ -19,6 +19,28 @@ from .models.baseline import make_model, probabilities_to_signal
 from .strategies import buy_and_hold
 
 
+def trend_mask(df: pd.DataFrame, days: int = 200) -> pd.Series:
+    """True while YESTERDAY's daily close was above its `days`-day average.
+
+    Uses only finished days, so it never peeks at the current day. Weekends are
+    filled with Friday's close, so the average spans calendar days.
+    """
+    daily = df["close"].resample("1D").last().ffill()
+    above = (daily > daily.rolling(days).mean()).shift(1, fill_value=False)
+    values = above.reindex(df.index.floor("1D")).fillna(False).to_numpy(dtype=bool)
+    return pd.Series(values, index=df.index)
+
+
+def model_signal(model, X_test, model_cfg: dict, df: pd.DataFrame, trend_filter: bool) -> pd.Series:
+    """Turn a trained model's predictions into positions; optionally only go long in an uptrend."""
+    proba = pd.Series(model.predict_proba(X_test)[:, 1], index=X_test.index)
+    signal = probabilities_to_signal(proba, model_cfg["threshold"], model_cfg["allow_short"])
+    if trend_filter:
+        uptrend = trend_mask(df).reindex(signal.index)
+        signal[(signal == 1) & ~uptrend] = 0
+    return signal
+
+
 def walk_forward(
     df: pd.DataFrame,
     model_kind: str,
@@ -27,6 +49,7 @@ def walk_forward(
     risk: RiskRules,
     n_folds: int = 5,
     min_train_fraction: float = 0.4,
+    trend_filter: bool = False,
 ) -> pd.DataFrame:
     """Return one row per fold with test-period results for the model and buy-and-hold."""
     horizon = model_cfg["horizon"]
@@ -45,8 +68,7 @@ def walk_forward(
         X_test, y_test = X.iloc[test_start:test_end], y.iloc[test_start:test_end]
 
         model = make_model(model_kind).fit(X_train, y_train)
-        proba = pd.Series(model.predict_proba(X_test)[:, 1], index=X_test.index)
-        signal = probabilities_to_signal(proba, model_cfg["threshold"], model_cfg["allow_short"])
+        signal = model_signal(model, X_test, model_cfg, df, trend_filter)
 
         period = df.loc[X_test.index[0] : X_test.index[-1]]
         model_stats = summarize(run_backtest(period, signal, costs, risk))
@@ -65,6 +87,43 @@ def walk_forward(
             "buy_hold_return": market_stats["total_return"],
         })
     return pd.DataFrame(rows)
+
+
+def holdout_test(
+    df: pd.DataFrame,
+    model_kind: str,
+    model_cfg: dict,
+    costs: Costs,
+    risk: RiskRules,
+    holdout_start: pd.Timestamp,
+    trend_filter: bool = False,
+) -> dict:
+    """Train on everything before `holdout_start`, then test once on everything after it."""
+    horizon = model_cfg["horizon"]
+    X, y = build_dataset(df, horizon)
+    before = X.index < holdout_start
+    # Drop the last rows before the holdout: their labels peek at holdout prices.
+    X_train, y_train = X[before].iloc[: -(horizon + 1)], y[before].iloc[: -(horizon + 1)]
+    X_test, y_test = X[~before], y[~before]
+    if len(X_test) < 20:
+        raise ValueError("Holdout period is too short")
+
+    model = make_model(model_kind).fit(X_train, y_train)
+    signal = model_signal(model, X_test, model_cfg, df, trend_filter)
+    period = df.loc[X_test.index[0]:]
+    stats = summarize(run_backtest(period, signal, costs, risk))
+    market = summarize(run_backtest(period, buy_and_hold(period), costs, RiskRules()))
+    return {
+        "train_end": X_train.index[-1],
+        "test_start": X_test.index[0],
+        "test_end": X_test.index[-1],
+        "accuracy": model.score(X_test, y_test),
+        "return": stats["total_return"],
+        "sharpe": stats["sharpe"],
+        "max_drawdown": stats["max_drawdown"],
+        "trades": stats["trades"],
+        "buy_hold_return": market["total_return"],
+    }
 
 
 def compare_models(df, model_kinds, model_cfg, costs, risk, n_folds=5) -> tuple[pd.DataFrame, pd.DataFrame]:
