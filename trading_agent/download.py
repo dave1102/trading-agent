@@ -46,6 +46,9 @@ def download_crypto(cfg: dict, symbols: list[str] | None, start: str | None) -> 
             print(f"  could not reach {cfg['exchange']}: {type(e).__name__}")
             print("  Check your internet/DNS, or try another exchange in config.toml.")
             continue
+        except ccxt.BadSymbol:
+            print(f"  {cfg['exchange']} does not list {symbol}; skipped")
+            continue
         summarize(symbol, save_ohlcv(df, path), timeframe)
         print(f"  saved to {path}")
 
@@ -84,6 +87,7 @@ def main() -> None:
     p_crypto = sub.add_parser("crypto", help="download from a public exchange via CCXT")
     p_crypto.add_argument("--symbols", nargs="+", help="override symbols from config.toml")
     p_crypto.add_argument("--start", help="start date, e.g. 2024-01-01 (re-downloads from there)")
+    p_crypto.add_argument("--exchange", help="override the exchange from config.toml, e.g. binanceus")
 
     p_fx = sub.add_parser("forex", help="import a CSV file from a forex data provider")
     p_fx.add_argument("--symbol", required=True, help="e.g. EURUSD")
@@ -97,6 +101,8 @@ def main() -> None:
     args = parser.parse_args()
     cfg = load_config()
     if args.market == "crypto":
+        if args.exchange:
+            cfg["crypto"]["exchange"] = args.exchange
         download_crypto(cfg["crypto"], args.symbols, args.start)
     elif args.market == "histdata":
         download_histdata(cfg["forex"], args.symbols, histdata.parse_years(args.years))

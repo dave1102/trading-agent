@@ -48,4 +48,27 @@ This trains a logistic-regression model on the oldest 70% of the data, then
 compares it on the unseen newest 30% with an SMA-crossover rule and buy-and-hold.
 Costs and risk rules are set in `config.toml`.
 
+## Stage 3: paper trading
+
+```powershell
+python -m trading_agent.paper_trade --market forex --start 2025-01-01
+```
+
+Replays candles one at a time into a virtual account in `paper_accounts/`.
+Every fill is logged to `trades.csv`; run it again to resume.
+
+## Stage 4: Google Colab and walk-forward testing
+
+```powershell
+# Compare models on several unseen periods (walk-forward):
+python -m trading_agent.evaluate --market forex --symbol EURUSD
+
+# Package the project for Colab (re-run after every code change):
+git archive --format=zip -o trading-agent.zip HEAD
+```
+
+Upload `trading-agent.zip` to My Drive, open `notebooks/colab_training.ipynb`
+in Colab, and choose Runtime → Run all. Colab can reach crypto exchanges even
+when your own network blocks them.
+
 (This README gets a full walkthrough in Stage 7.)

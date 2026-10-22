@@ -9,5 +9,8 @@ ccxt>=4.2
 # Free forex history downloads from HistData.com
 requests>=2.31
 
+# Charts in the Colab notebook
+matplotlib>=3.8
+
 # Testing
 pytest>=8.0
