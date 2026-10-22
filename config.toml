@@ -38,3 +38,14 @@ horizon = 1                 # predict the next candle
 threshold = 0.55            # only trade when the model is at least 55% confident
 test_fraction = 0.3         # last 30% of history is kept unseen for evaluation
 allow_short = false         # set true to also bet on falling prices
+
+# Paper trading: one virtual account shared by all symbols. Zero = rule off.
+[paper]
+initial_cash = 10000
+position_fraction = 0.25    # each new position uses 25% of equity
+max_open_positions = 3
+max_gross_exposure = 1.0    # total position value may not exceed equity (no leverage)
+stop_loss = 0.03
+take_profit = 0.0
+daily_loss_limit = 0.03     # lose 3% in a UTC day -> close everything, pause until tomorrow
+max_drawdown_halt = 0.3     # 30% below the peak -> close everything and stop

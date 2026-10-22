@@ -7,6 +7,7 @@ __pycache__/
 # Downloaded market data and trained models (large, re-creatable)
 data/
 models/
+paper_accounts/
 
 # Secrets must never be committed (this project should not need any)
 .env
