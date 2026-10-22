@@ -33,4 +33,19 @@ python -m trading_agent.download forex --symbol EURUSD --file path\to\DAT_ASCII_
 
 Files are saved in `data/raw/<market>/`, for example `data/raw/crypto/BTC-USDT_1h.csv`.
 
+## Stage 2: baseline model and backtesting
+
+```powershell
+# Try it without any downloaded data (random prices, so expect no edge):
+python -m trading_agent.experiment --demo
+
+# On data you have collected:
+python -m trading_agent.experiment --market crypto --symbol BTC/USDT
+python -m trading_agent.experiment --market forex --symbol EURUSD
+```
+
+This trains a logistic-regression model on the oldest 70% of the data, then
+compares it on the unseen newest 30% with an SMA-crossover rule and buy-and-hold.
+Costs and risk rules are set in `config.toml`.
+
 (This README gets a full walkthrough in Stage 7.)

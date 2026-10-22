@@ -14,3 +14,27 @@ start = "2022-01-01"
 # historical-data provider (see README). Names have no slash.
 symbols = ["EURUSD", "GBPUSD", "USDJPY"]
 timeframe = "1h"
+
+# Trading costs as fractions of price (0.001 = 0.1%). Be pessimistic: if a
+# strategy only works with tiny costs, it does not work.
+[costs.crypto]
+fee_rate = 0.001    # typical spot taker fee
+spread = 0.0002
+slippage = 0.0005
+
+[costs.forex]
+fee_rate = 0.0      # forex brokers usually charge through the spread instead
+spread = 0.0001     # about 1 pip on EUR/USD
+slippage = 0.00005
+
+[risk]
+position_fraction = 0.5     # use half the account per trade
+stop_loss = 0.03            # exit if price moves 3% against the position
+take_profit = 0.0           # 0 = no take-profit
+max_drawdown_halt = 0.3     # stop trading after a 30% fall from the peak
+
+[model]
+horizon = 1                 # predict the next candle
+threshold = 0.55            # only trade when the model is at least 55% confident
+test_fraction = 0.3         # last 30% of history is kept unseen for evaluation
+allow_short = false         # set true to also bet on falling prices
