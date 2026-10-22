@@ -10,9 +10,11 @@ Examples:
 import argparse
 import os
 import random
+import sys
 import time
 import traceback
 from contextlib import contextmanager
+from pathlib import Path
 
 import pandas as pd
 import requests
@@ -152,7 +154,10 @@ def main() -> None:
     sub.add_parser("report")
     p_run = sub.add_parser("run", help="scan + track repeatedly")
     p_run.add_argument("--every", type=float, default=15, help="minutes between rounds")
+    p_run.add_argument("--log", type=Path, help="write all output to this file (for running without a window)")
     args = parser.parse_args()
+    if args.command == "run" and args.log:
+        log_to_file(args.log)
 
     cfg = load_config()["memecoins"]
     client = ApiClient()
@@ -168,7 +173,8 @@ def main() -> None:
         report()
     else:
         with single_instance(LOCK_FILE):
-            print(f"Scanning every {args.every:g} minutes. Leave this window open; press Ctrl+C to stop.")
+            print(f"Scanner started: scanning every {args.every:g} minutes "
+                  "(stop with Ctrl+C, or stop_scanner.cmd when running in the background).")
             while True:
                 print(f"\n[{pd.Timestamp.now(tz='UTC'):%Y-%m-%d %H:%M} UTC] scan")
                 try:
@@ -177,6 +183,13 @@ def main() -> None:
                 except Exception:  # running unattended: log it and retry next round
                     traceback.print_exc()
                 time.sleep(args.every * 60)
+
+
+def log_to_file(path: Path) -> None:
+    """Send all printed output and errors to `path`. Needed under pythonw.exe, which has no window."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    log = open(path, "a", encoding="utf-8", buffering=1)  # line-buffered: each line is saved at once
+    sys.stdout = sys.stderr = log
 
 
 @contextmanager

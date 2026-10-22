@@ -231,12 +231,26 @@ Paper only: it reads public data and never holds a wallet or keys. Each round it
 Files are in `data\memecoins\`: `candidates.csv` (every pool judged, with reasons)
 and `checks.csv` (results). All rules are in `[memecoins]` in `config.toml`.
 
-**Start it automatically when you sign in to Windows:** put a shortcut to
-`start_scanner.cmd` in your Startup folder (press `Win+R`, type `shell:startup`,
-press Enter, then right-click → New → Shortcut). Set the shortcut's **Run** option to
-**Minimized**. The scanner then runs in a minimised window and writes to
-`data\memecoins\scanner.log`. Close that window to stop it; delete the shortcut to
-stop it starting automatically.
+**Run it in the background (no window):** double-click these in the project folder:
+
+| File | What it does |
+|---|---|
+| `start_scanner.cmd` | Starts the scanner invisibly in the background |
+| `scanner_status.cmd` | Says whether it is running and shows the latest log lines |
+| `stop_scanner.cmd` | Stops it |
+
+Output goes to `data\memecoins\scanner.log`.
+
+**Start it automatically when you sign in to Windows:** press `Win+R`, type
+`shell:startup`, press Enter, and create a shortcut there (right-click → New → Shortcut)
+with this target, using the project folder as "Start in":
+
+```
+C:\Users\Hp\trading-agent\.venv\Scripts\pythonw.exe -m trading_agent.memescan run --every 15 --log data\memecoins\scanner.log
+```
+
+`pythonw.exe` runs Python with no window at all. Delete the shortcut to stop it
+starting automatically.
 
 **Weekly report:** `weekly_report.cmd` saves the report to
 `data\memecoins\report_YYYY-MM-DD.txt` and opens it in Notepad. On this PC a Windows

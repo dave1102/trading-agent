@@ -182,6 +182,17 @@ def test_verdict_lines():
     assert journal.verdict_lines(journal.summarize(checks))[0] == "1h: no results yet."
 
 
+def test_log_to_file_captures_output_and_errors(tmp_path, monkeypatch):
+    monkeypatch.setattr(memescan.sys, "stdout", memescan.sys.stdout)  # restored after the test
+    monkeypatch.setattr(memescan.sys, "stderr", memescan.sys.stderr)
+    log = tmp_path / "logs" / "scanner.log"
+    memescan.log_to_file(log)
+    print("hello from the scanner")
+    print("an error", file=memescan.sys.stderr)
+    memescan.sys.stdout.close()
+    assert log.read_text(encoding="utf-8").splitlines() == ["hello from the scanner", "an error"]
+
+
 def test_only_one_scanner_can_run(tmp_path):
     lock = tmp_path / "scanner.lock"
     with memescan.single_instance(lock):
