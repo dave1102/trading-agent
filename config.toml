@@ -10,6 +10,15 @@ symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
 timeframe = "1h"
 start = "2022-01-01"
 
+[portfolio]
+# Coins for the multi-coin trend/momentum strategies (daily candles, weekly rebalance).
+# The first three are the original research coins; the other ten were never used
+# to choose any setting.
+symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT",
+           "XRP/USDT", "ADA/USDT", "DOGE/USDT", "AVAX/USDT", "LINK/USDT",
+           "DOT/USDT", "LTC/USDT", "BNB/USDT", "TRX/USDT", "ATOM/USDT"]
+original = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+
 [funding]
 # Market-wide sentiment from perpetual-futures funding rates (public data).
 # Deribit has hourly history from 2022 for BTC and ETH; used as inputs for every coin.

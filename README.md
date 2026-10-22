@@ -187,6 +187,26 @@ period after it: price only, plus market inputs (what BTC is doing, time of day,
 day of week), plus funding rates. For each confidence level it pools the trades of
 all coins and shows win rate, profit per trade and profit factor.
 
+### Step 4c: Multi-coin trend following (the first strategy that passed)
+
+```powershell
+python -m trading_agent.download crypto --start 2022-01-01      # all coins in [portfolio] need data
+python -m trading_agent.trend
+```
+
+Instead of predicting the next hour, this holds coins that have been rising and
+steps aside from coins that have been falling, across 13 coins at once:
+
+- **Trend score** per coin: the share of its 20-, 60- and 120-day returns that are
+  positive (0, ⅓, ⅔ or 1).
+- **Sizing**: calmer coins get bigger positions; at most 25% in one coin and 100% in total.
+- **Weekly rebalance** (Sunday close, traded at Monday's open), with full costs.
+
+All settings are common textbook values fixed before testing. The pass rule was
+also fixed in advance: beat an equal-weight basket of all coins on Sharpe ratio
+**and** have a worst drawdown at least a third smaller, in both periods and in
+every coin group (the original 3, the 10 new coins, all 13).
+
 ### Step 5: Paper trade
 
 ```powershell
@@ -271,6 +291,17 @@ These are research results, not advice, and they will change as data grows.
   (XRP, ADA, DOGE, AVAX, LINK, DOT, LTC, BNB, TRX, ATOM), the same setup made
   93 trades, won 55% of them, and lost 0.25% per trade (profit factor 0.73).
   Testing a promising setup on fresh symbols is a fast way to catch a fluke.
+- **Multi-coin trend following passed its pre-set test.** On all 13 coins:
+  May 2022–2024 +112% (Sharpe 1.13, worst drawdown -25%) vs the basket's +89%
+  (Sharpe 0.69, -59%); 2025 to now -9% (Sharpe -0.14, -23%) vs the basket's -51%
+  (Sharpe -0.35, -67%). It also passed on the original 3 and on the 10 new coins
+  separately, and doubling costs changed little. Against a basket scaled down to
+  the same ~40% invested, it still did better (+112% vs +48%; -9% vs -18%), so the
+  edge comes from timing, not just from holding less. Momentum rotation failed.
+- **Limits of that result:** it is about 4.5 years of one market; it still lost
+  money in 2025–2026 (just much less than holding); it won only about half of all
+  weeks; and the 13 coins are ones that still exist today, which flatters
+  every strategy a little (coins that collapsed, such as LUNA, are missing).
 - **A more flexible model did worse.** Gradient boosting traded more, learned noise
   and lost more than logistic regression.
 - **Data note:** HistData's 2023 files are missing many whole hours from February
