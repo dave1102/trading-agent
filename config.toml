@@ -1,0 +1,16 @@
+# Project settings. Edit this file to change which markets you research.
+
+[crypto]
+# Any exchange CCXT supports with public OHLCV data. If "binance" is blocked
+# in your region, try "bybit" or "okx".
+exchange = "binance"
+# Add altcoins freely, e.g. "XRP/USDT", "ADA/USDT", "AVAX/USDT".
+symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+timeframe = "1h"
+start = "2022-01-01"
+
+[forex]
+# Forex data is imported from CSV files you download from a legitimate
+# historical-data provider (see README). Names have no slash.
+symbols = ["EURUSD", "GBPUSD", "USDJPY"]
+timeframe = "1h"

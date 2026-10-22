@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Downloaded market data and trained models (large, re-creatable)
+data/
+models/
+
+# Secrets must never be committed (this project should not need any)
+.env
+*.key
+
+# Editors / notebooks
+.vscode/
+.ipynb_checkpoints/

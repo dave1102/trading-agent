@@ -1,0 +1,10 @@
+# Core data + ML stack
+pandas>=2.1
+numpy>=1.26
+scikit-learn>=1.4
+
+# Public crypto market data (no API keys are used anywhere in this project)
+ccxt>=4.2
+
+# Testing
+pytest>=8.0
