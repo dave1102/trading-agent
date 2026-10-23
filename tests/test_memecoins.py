@@ -193,6 +193,41 @@ def test_log_to_file_captures_output_and_errors(tmp_path, monkeypatch):
     assert log.read_text(encoding="utf-8").splitlines() == ["hello from the scanner", "an error"]
 
 
+def test_api_client_retries_dropped_connections(monkeypatch):
+    import requests
+
+    from trading_agent.memecoins.http import ApiClient
+
+    class Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"ok": True}
+
+    class FlakySession:
+        headers = {}
+
+        def __init__(self, failures):
+            self.failures = failures
+            self.calls = 0
+
+        def get(self, url, timeout):
+            self.calls += 1
+            if self.calls <= self.failures:
+                raise requests.ConnectionError("Connection aborted: RemoteDisconnected")
+            return Response()
+
+    monkeypatch.setattr("trading_agent.memecoins.http.time.sleep", lambda s: None)
+    session = FlakySession(failures=1)
+    assert ApiClient(min_interval=0, session=session).get_json("https://x") == {"ok": True}
+    assert session.calls == 2
+    with pytest.raises(requests.ConnectionError):  # gives up after its retries
+        ApiClient(min_interval=0, retries=2, session=FlakySession(failures=5)).get_json("https://x")
+
+
 def test_only_one_scanner_can_run(tmp_path):
     lock = tmp_path / "scanner.lock"
     with memescan.single_instance(lock):

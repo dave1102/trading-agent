@@ -21,7 +21,14 @@ class ApiClient:
             if wait > 0:
                 time.sleep(wait)
             self._last_call = time.monotonic()
-            response = self.session.get(url, timeout=self.timeout)
+            try:
+                response = self.session.get(url, timeout=self.timeout)
+            except (requests.ConnectionError, requests.Timeout):
+                # Often a connection the server closed while we were idle; a retry reconnects.
+                if attempt == self.retries:
+                    raise
+                time.sleep(5 * (attempt + 1))
+                continue
             if response.status_code == 404:
                 return None
             if response.status_code == 429 and attempt < self.retries:
