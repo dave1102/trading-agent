@@ -231,26 +231,38 @@ Paper only: it reads public data and never holds a wallet or keys. Each round it
 Files are in `data\memecoins\`: `candidates.csv` (every pool judged, with reasons)
 and `checks.csv` (results). All rules are in `[memecoins]` in `config.toml`.
 
-**Run it in the background (no window):** double-click these in the project folder:
+**Version 2 (from 30 October 2026): three entry strategies.** Each is an independent
+paper trader with its own entry time and price, and all share the same safety checks:
+
+| Strategy | Buys |
+|---|---|
+| `trending` | the week-1 rules: 15 min to 24 h old, $20k+ liquidity, 50+ trades in the last hour |
+| `early` | 15–60 min old, $10k+ liquidity, 30+ trades in the last hour |
+| `not_pumped` | like `trending`, but rose less than 50% in the last hour |
+
+Entries are checked after 5 m, 15 m, 30 m, 1 h, 24 h and 7 d. The report also tests
+a **quick exit** for each strategy: sell at the first check at +30% or -20%,
+otherwise at 1 hour. The comparison group is a random 20% of all listed pools with
+at least $1,000 liquidity; `control_liquid` is the part with $20k+, the fair
+comparison. Week-1 results are kept as `week1_*.csv`.
+
+**Where it runs:** on the Hostinger server, in a Docker container called `memescan`
+(folder `/opt/trading-agent`, data in `/opt/trading-agent/data/memecoins`). It runs
+24/7, restarts by itself, and is capped at 300 MB of memory and half a CPU core. Control
+it from the PC by double-clicking these (they use the `vps` SSH shortcut):
 
 | File | What it does |
 |---|---|
-| `start_scanner.cmd` | Starts the scanner invisibly in the background |
 | `scanner_status.cmd` | Says whether it is running and shows the latest log lines |
-| `stop_scanner.cmd` | Stops it |
+| `stop_scanner.cmd` / `start_scanner.cmd` | Stops / starts it |
+| `weekly_report.cmd` | Fetches the report into `data\memecoins\report_YYYY-MM-DD.txt` |
 
-Output goes to `data\memecoins\scanner.log`.
+To update the server after a code change: commit, then
+`git archive --format=tar.gz -o src.tar.gz HEAD`, copy `src.tar.gz` and
+`deploy\vps_deploy.sh` to `/opt/trading-agent/` on the server, and run
+`bash /opt/trading-agent/vps_deploy.sh` there. The data folder is kept.
 
-**Start it automatically when you sign in to Windows:** press `Win+R`, type
-`shell:startup`, press Enter, and create a shortcut there (right-click → New → Shortcut)
-with this target, using the project folder as "Start in":
-
-```
-C:\Users\Hp\trading-agent\.venv\Scripts\pythonw.exe -m trading_agent.memescan run --every 15 --log data\memecoins\scanner.log
-```
-
-`pythonw.exe` runs Python with no window at all. Delete the shortcut to stop it
-starting automatically.
+To run it on the PC instead: `python -m trading_agent.memescan run --every 15`.
 
 **Weekly report:** `weekly_report.cmd` saves the report to
 `data\memecoins\report_YYYY-MM-DD.txt` and opens it in Notepad. On this PC a Windows
