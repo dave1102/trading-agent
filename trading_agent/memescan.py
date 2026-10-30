@@ -128,7 +128,11 @@ def report(candidates_path=CANDIDATES, checks_path=CHECKS) -> None:
     print(reasons.value_counts().head(10).to_string())
 
     checks = journal.read_csv(checks_path)
-    table = journal.summarize(checks)
+    if not checks.empty:
+        suspect = int((checks["gross_return"] > journal.SUSPECT_GROSS).sum())
+        print(f"\nLeft out {suspect} checkpoint(s) with an impossible price jump (over 100x: broken readings).")
+    min_liquidity = load_config()["memecoins"]["min_liquidity_usd"]
+    table = journal.summarize(journal.add_liquid_control(checks, candidates, min_liquidity))
     if table.empty:
         print("\nNo checkpoints recorded yet (the first arrive 1 hour after a pick).")
         return
@@ -142,7 +146,8 @@ def report(candidates_path=CANDIDATES, checks_path=CHECKS) -> None:
     print("\nVERDICT")
     for line in journal.verdict_lines(table):
         print("  " + line)
-    print("\n'mean_net' is the average result per $100 paper trade. Paper results with an optimistic cost model:")
+    print("\n'median_net' is the typical result per $100 paper trade; 'control_liquid' = comparison pools at least")
+    print("as liquid as picks must be (the fair comparison). Paper results with an optimistic cost model:")
     print("real trading would likely do somewhat worse.")
 
 

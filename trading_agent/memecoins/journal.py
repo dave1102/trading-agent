@@ -24,6 +24,9 @@ CHECK_COLUMNS = [
 ]
 CHECKPOINTS = {"1h": pd.Timedelta(hours=1), "24h": pd.Timedelta(hours=24), "7d": pd.Timedelta(days=7)}
 RUG_LIQUIDITY_DROP = 0.9  # liquidity down 90%+ from entry = treat as a rug pull (total loss)
+# A price up more than 100x is almost always a broken reading (e.g. a pool's first price),
+# not a real trade result; such checks are left out of the summaries.
+SUSPECT_GROSS = 99.0
 
 
 def safe_text(value) -> str:
@@ -96,8 +99,24 @@ def due_checks(candidates: pd.DataFrame, checks: pd.DataFrame, now: pd.Timestamp
     return pd.DataFrame(rows)
 
 
+def add_liquid_control(checks: pd.DataFrame, candidates: pd.DataFrame, min_liquidity: float) -> pd.DataFrame:
+    """Add 'control_liquid' rows: comparison pools that were at least as liquid as picks must be.
+
+    The full comparison group is mostly tiny, inactive pools, which mainly lose to costs;
+    pools as liquid as the picks are the fair comparison.
+    """
+    if checks.empty or candidates.empty:
+        return checks
+    liquidity = candidates.set_index("pool_address")["liquidity_usd"]
+    liquid = checks[(checks["group"] == "control") & (checks["pool_address"].map(liquidity) >= min_liquidity)]
+    return pd.concat([checks, liquid.assign(group="control_liquid")], ignore_index=True)
+
+
 def verdict_lines(table: pd.DataFrame, min_tokens: int = 100) -> list[str]:
-    """Plain-English reading of the summary table, one line per checkpoint."""
+    """Plain-English reading of the summary table, one line per checkpoint.
+
+    Judged by the MEDIAN trade: a few huge winners or broken readings cannot distort it.
+    """
     lines = []
     for checkpoint in CHECKPOINTS:
         rows = table[table["checkpoint"] == checkpoint].set_index("group") if not table.empty else table
@@ -108,13 +127,15 @@ def verdict_lines(table: pd.DataFrame, min_tokens: int = 100) -> list[str]:
         if pick["tokens"] < min_tokens:
             lines.append(f"{checkpoint}: only {int(pick['tokens'])} picks so far - too early to judge (need {min_tokens}+).")
             continue
-        money = "MADE money" if pick["mean_net"] > 0 else "LOST money"
-        line = (f"{checkpoint}: picks {money} on average ({pick['mean_net']:+.1%} per trade after costs; "
+        money = "MADE money" if pick["median_net"] > 0 else "LOST money"
+        line = (f"{checkpoint}: the typical pick {money} ({pick['median_net']:+.1%} after costs; "
                 f"{pick['positive']:.0%} ended up, {pick['rugged']:.0%} rugged).")
-        if "control" in rows.index:
-            control = rows.loc["control"]
-            better = "the rules HELPED" if pick["mean_net"] > control["mean_net"] else "the rules did NOT help"
-            line += f" Comparison group: {control['mean_net']:+.1%}, so {better}."
+        control_group = "control_liquid" if "control_liquid" in rows.index else "control"
+        if control_group in rows.index:
+            control = rows.loc[control_group]
+            better = "the rules HELPED" if pick["median_net"] > control["median_net"] else "the rules did NOT help"
+            line += (f" Equally liquid comparison pools: {control['median_net']:+.1%}, "
+                     f"{control['rugged']:.0%} rugged, so {better}.")
         lines.append(line)
     return lines
 
@@ -123,6 +144,8 @@ def summarize(checks: pd.DataFrame) -> pd.DataFrame:
     """Per group and checkpoint: how many, median/mean result after costs, share positive, share rugged."""
     if checks.empty:
         return pd.DataFrame()
+    if "gross_return" in checks.columns:
+        checks = checks[~(checks["gross_return"] > SUSPECT_GROSS)]  # drop broken price readings
     order = {name: i for i, name in enumerate(CHECKPOINTS)}
     table = checks.groupby(["checkpoint", "group"]).agg(
         tokens=("net_return", "size"),

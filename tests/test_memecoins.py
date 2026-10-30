@@ -177,9 +177,24 @@ def test_verdict_lines():
     assert "too early" in journal.verdict_lines(early)[1]
 
     checks = pd.DataFrame(rows("pick", 120, -0.05) + rows("control", 120, -0.30))
+    checks["gross_return"] = checks["net_return"]
     line = journal.verdict_lines(journal.summarize(checks))[1]
     assert "LOST money" in line and "the rules HELPED" in line
     assert journal.verdict_lines(journal.summarize(checks))[0] == "1h: no results yet."
+
+
+def test_summary_ignores_broken_prices_and_uses_liquid_control():
+    checks = pd.DataFrame([
+        {"pool_address": "p1", "checkpoint": "24h", "group": "pick", "net_return": -0.5, "gross_return": -0.5, "rugged": False},
+        {"pool_address": "c1", "checkpoint": "24h", "group": "control", "net_return": -1.0, "gross_return": -1.0, "rugged": True},
+        {"pool_address": "c2", "checkpoint": "24h", "group": "control", "net_return": -0.1, "gross_return": -0.1, "rugged": False},
+        {"pool_address": "c3", "checkpoint": "24h", "group": "control", "net_return": 1.6e7, "gross_return": 1.6e7, "rugged": False},
+    ])
+    candidates = pd.DataFrame({"pool_address": ["p1", "c1", "c2", "c3"], "liquidity_usd": [50_000, 30_000, 2_000, 40_000]})
+    table = journal.summarize(journal.add_liquid_control(checks, candidates, 20_000)).set_index("group")
+    assert table.loc["control", "tokens"] == 2  # the 16-million-x reading is left out
+    assert table.loc["control_liquid", "tokens"] == 1  # only c1 was liquid (c3 is broken)
+    assert table.loc["control_liquid", "rugged"] == 1.0
 
 
 def test_log_to_file_captures_output_and_errors(tmp_path, monkeypatch):
