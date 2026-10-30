@@ -279,6 +279,16 @@ The report answers two questions: do picks make money after costs, and do they d
 better than the comparison group (that is, do the rules help)? Wait for 100+ picks
 per checkpoint before drawing conclusions.
 
+**Forward paper test of the trend strategy** (from 1 November 2026): on the server, a
+second container `trendpaper` replays three virtual $10,000 portfolios from the fixed
+start date, using only completed days of MEXC prices: `trend` (exactly the tested
+settings), `basket_hold` (all 13 coins equally) and `btc_hold`. First decision at the
+close of Sunday 1 November (UTC), first trade at Monday's open, then weekly. Files are
+in `/opt/trading-agent/data/trend/` on the server: `equity_log.csv` (one row per day,
+only ever appended), `trades.csv` and `holdings.csv`. Its results are at the top of
+the Friday report. On the PC: `python -m trading_agent.trendpaper update` then
+`python -m trading_agent.trendpaper report`.
+
 ### Step 5: Paper trade
 
 ```powershell

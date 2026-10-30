@@ -6,6 +6,14 @@ if [ "$(docker inspect -f '{{.State.Running}}' memescan 2>/dev/null)" = "true" ]
 else
   echo "Scanner is NOT running. Start it with start_scanner.cmd."
 fi
+if [ "$(docker inspect -f '{{.State.Running}}' trendpaper 2>/dev/null)" = "true" ]; then
+  echo "Trend paper test is RUNNING too"
+else
+  echo "Trend paper test is NOT running."
+fi
 echo
-echo "Latest log lines:"
+echo "Latest scanner log lines:"
 tail -n 15 /opt/trading-agent/data/memecoins/scanner.log 2>/dev/null
+echo
+echo "Latest trend paper log lines:"
+tail -n 3 /opt/trading-agent/data/trend/trend.log 2>/dev/null

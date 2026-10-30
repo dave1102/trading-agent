@@ -1,5 +1,6 @@
-# Meme coin scanner (paper only: no wallet, no keys, no real trades).
+# Meme coin scanner and trend paper test (paper only: no wallet, no keys, no real trades).
 # Data lives in /app/data, mounted from the server so it survives updates.
+# The default command runs the scanner; the trendpaper container overrides it.
 FROM python:3.12-slim
 
 WORKDIR /app

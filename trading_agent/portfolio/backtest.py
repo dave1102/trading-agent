@@ -18,6 +18,7 @@ class PortfolioResult:
     weights: pd.DataFrame  # share of the account held in each coin, after trading
     turnover: pd.Series  # dollars traded each day / account value
     costs: pd.Series  # dollars paid in costs each day
+    trades: pd.DataFrame  # dollars bought (+) or sold (-) per coin each day
 
 
 def run_portfolio_backtest(
@@ -48,6 +49,7 @@ def run_portfolio_backtest(
     weights = np.zeros((n, m))
     turnover = np.zeros(n)
     costs = np.zeros(n)
+    trades = np.zeros((n, m))
 
     for i in range(n):
         if i > 0:
@@ -58,7 +60,8 @@ def run_portfolio_backtest(
             # Yesterday's close decided these targets; we trade them now, at today's open.
             tradable = np.isfinite(prices[i])
             target = np.where(tradable, targets[i - 1] * value, holdings)
-            traded = np.abs(target - holdings).sum()
+            trades[i] = target - holdings
+            traded = np.abs(trades[i]).sum()
             cost = traded * cost_rate
             cash = value - target.sum() - cost
             holdings = target
@@ -73,6 +76,7 @@ def run_portfolio_backtest(
         weights=pd.DataFrame(weights, index=opens.index, columns=opens.columns),
         turnover=pd.Series(turnover, index=opens.index, name="turnover"),
         costs=pd.Series(costs, index=opens.index, name="costs"),
+        trades=pd.DataFrame(trades, index=opens.index, columns=opens.columns),
     )
 
 

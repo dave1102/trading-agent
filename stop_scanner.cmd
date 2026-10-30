@@ -1,6 +1,6 @@
 @echo off
-rem Stops the meme scanner on the server. Start it again with start_scanner.cmd.
-rem (It also starts again by itself if the server reboots.)
-ssh -o ConnectTimeout=20 vps "docker stop memescan >/dev/null && echo Scanner stopped."
+rem Stops the meme scanner and the trend paper test on the server.
+rem Start them again with start_scanner.cmd.
+ssh -o ConnectTimeout=20 vps "docker stop memescan trendpaper >/dev/null && echo Scanner and trend paper test stopped."
 echo.
 pause

@@ -19,6 +19,13 @@ symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT",
            "DOT/USDT", "LTC/USDT", "BNB/USDT", "TRX/USDT", "ATOM/USDT"]
 original = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
 
+[trend_paper]
+# Forward paper test of the trend strategy above (fixed 2026-10-30, before any forward data).
+# First decision at this Sunday's close (UTC), first trade at Monday's open.
+start = "2026-11-01"
+initial_cash = 10000
+exchange = "mexc"
+
 [memecoins]
 # New-token scanner (paper only). GeckoTerminal network ids.
 networks = ["solana", "base", "bsc", "eth"]

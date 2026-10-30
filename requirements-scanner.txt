@@ -1,4 +1,6 @@
-# Only what the meme coin scanner needs (used by the Docker image on the server)
+# Only what the server needs: the meme coin scanner and the trend paper test
+# (used by the Docker image on the server)
 pandas>=2.1
 numpy>=1.26
 requests>=2.31
+ccxt>=4.2

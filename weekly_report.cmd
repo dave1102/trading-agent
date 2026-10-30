@@ -7,6 +7,6 @@ cd /d "%~dp0"
 if not exist "data\memecoins" mkdir "data\memecoins"
 for /f %%d in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd"') do set TODAY=%%d
 set OUT=data\memecoins\report_%TODAY%.txt
-ssh -o ConnectTimeout=30 vps "docker exec -e PYTHONIOENCODING=utf-8 memescan python -m trading_agent.memescan report" > "%OUT%" 2>&1
+ssh -o ConnectTimeout=30 vps "docker exec -e PYTHONIOENCODING=utf-8 trendpaper python -m trading_agent.trendpaper report; echo; echo ==========; echo; docker exec -e PYTHONIOENCODING=utf-8 memescan python -m trading_agent.memescan report" > "%OUT%" 2>&1
 if errorlevel 1 echo. >> "%OUT%" & echo Could not reach the server. If your Wi-Fi blocks SSH, try a phone hotspot and run weekly_report.cmd again. >> "%OUT%"
 start "" notepad "%OUT%"
