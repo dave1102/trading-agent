@@ -13,15 +13,23 @@ from trading_agent.memecoins.security import SecurityReport, parse_goplus_evm, p
 from trading_agent.memecoins.sources import parse_pools
 
 NOW = pd.Timestamp("2026-10-23 12:00", tz="UTC")
+TRENDING = {"min_age_minutes": 15, "max_age_hours": 24, "min_liquidity_usd": 20_000, "min_trades_h1": 50}
+STRATEGIES = {
+    "trending": TRENDING,
+    "early": {"min_age_minutes": 15, "max_age_hours": 1, "min_liquidity_usd": 10_000, "min_trades_h1": 30},
+    "not_pumped": {**TRENDING, "max_change_h1": 0.5},
+}
 CFG = {
-    "networks": ["base"], "pages": 1, "min_age_minutes": 15, "max_age_hours": 24,
-    "min_liquidity_usd": 20_000, "min_trades_h1": 50, "max_tax": 0.05, "max_top10_share": 0.30,
-    "min_lp_locked": 0.90, "control_rate": 1.0, "control_min_liquidity_usd": 1_000,
+    "networks": ["base"], "pages": 1, **TRENDING, "strategies": STRATEGIES,
+    "max_tax": 0.05, "max_top10_share": 0.30, "min_lp_locked": 0.90,
+    "control_rate": 1.0, "control_min_liquidity_usd": 1_000, "control_liquid_usd": 20_000,
+    "quick_exit_take_profit": 0.30, "quick_exit_stop_loss": 0.20,
     "trade_usd": 100, "dex_fee": 0.003, "gas_usd": {"base": 0.05, "eth": 3.0, "solana": 0.01},
 }
 
 
-def gt_pool(address, token="0xtoken", age_hours=2.0, liquidity=50_000, buys=60, sells=40, price=0.001, cg=None):
+def gt_pool(address, token="0xtoken", age_hours=2.0, liquidity=50_000, buys=60, sells=40, price=0.001, cg=None,
+            change_h1=10.0):
     created = (NOW - pd.Timedelta(hours=age_hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
     return {
         "data": [{
@@ -29,6 +37,7 @@ def gt_pool(address, token="0xtoken", age_hours=2.0, liquidity=50_000, buys=60, 
                 "address": address, "name": "MEME / WETH", "pool_created_at": created,
                 "base_token_price_usd": str(price), "reserve_in_usd": str(liquidity), "fdv_usd": "500000",
                 "volume_usd": {"h1": "12000"}, "transactions": {"h1": {"buys": buys, "sells": sells}},
+                "price_change_percentage": {"h1": str(change_h1), "h6": "20"},
             },
             "relationships": {
                 "base_token": {"data": {"id": f"base_{token}", "type": "token"}},
@@ -81,6 +90,18 @@ def test_parse_pools_reads_geckoterminal_shape():
     assert pool.token_address == "0xtoken" and pool.symbol == "MEME"
     assert pool.liquidity_usd == 50_000 and pool.buys_h1 == 60 and pool.sells_h1 == 40
     assert pool.created_at == NOW - pd.Timedelta(hours=2)
+    assert pool.change_h1 == pytest.approx(0.10)  # GeckoTerminal gives percent; we store fractions
+
+
+def test_strategy_rules():
+    [steady] = parse_pools(gt_pool("0xa", age_hours=0.5, liquidity=15_000, buys=25, sells=10), "base")
+    assert market_reasons(steady, STRATEGIES["early"], NOW) == []
+    assert "low liquidity" in market_reasons(steady, STRATEGIES["trending"], NOW)
+    [older] = parse_pools(gt_pool("0xb", age_hours=3), "base")
+    assert "too old" in market_reasons(older, STRATEGIES["early"], NOW)
+    [pumped] = parse_pools(gt_pool("0xc", change_h1=180.0), "base")
+    assert market_reasons(pumped, STRATEGIES["trending"], NOW) == []
+    assert any("already pumped" in r for r in market_reasons(pumped, STRATEGIES["not_pumped"], NOW))
 
 
 def test_market_rules():
@@ -171,27 +192,46 @@ def test_safe_text_defuses_spreadsheet_formulas():
 
 def test_verdict_lines():
     def rows(group, n, mean):
-        return [{"checkpoint": "24h", "group": group, "net_return": mean, "rugged": False}] * n
+        return [{"checkpoint": "24h", "group": group, "net_return": mean, "gross_return": mean, "rugged": False}] * n
 
-    early = journal.summarize(pd.DataFrame(rows("pick", 5, 0.1)))
-    assert "too early" in journal.verdict_lines(early)[1]
+    early = journal.summarize(pd.DataFrame(rows("trending", 5, 0.1)))
+    lines = journal.verdict_lines(early, ["trending", "early"])
+    assert "trending @ 24h: only 5 trades" in lines[2]
+    assert lines[3] == "early @ quick_exit: no results yet."
 
-    checks = pd.DataFrame(rows("pick", 120, -0.05) + rows("control", 120, -0.30))
-    checks["gross_return"] = checks["net_return"]
-    line = journal.verdict_lines(journal.summarize(checks))[1]
+    checks = pd.DataFrame(rows("trending", 120, -0.05) + rows("control", 120, -0.30))
+    line = journal.verdict_lines(journal.summarize(checks), ["trending"])[2]
     assert "LOST money" in line and "the rules HELPED" in line
-    assert journal.verdict_lines(journal.summarize(checks))[0] == "1h: no results yet."
+
+
+def test_quick_exit_takes_first_trigger_or_sells_at_one_hour():
+    def check(eid, cp, gross, rugged=False):
+        return {"entry_id": eid, "group": "trending", "checkpoint": cp, "gross_return": gross,
+                "net_return": gross - 0.01, "rugged": rugged}
+
+    checks = pd.DataFrame([
+        check("up", "5m", 0.10), check("up", "15m", 0.35), check("up", "30m", -0.5),  # take profit at 15m
+        check("down", "5m", -0.25),                                                    # stop loss at 5m
+        check("flat", "5m", 0.0), check("flat", "15m", 0.05), check("flat", "30m", -0.1), check("flat", "1h", 0.1),
+        check("rug", "5m", -1.0, rugged=True),
+        check("gap", "5m", 0.0), check("gap", "30m", 0.1), check("gap", "1h", 0.2),    # 15m missing: left out
+        check("waiting", "5m", 0.05),                                                  # no exit yet: left out
+    ])
+    exits = journal.quick_exit(checks, take_profit=0.30, stop_loss=0.20).set_index("entry_id")
+    assert dict(exits["exit_at"]) == {"up": "15m", "down": "5m", "flat": "1h", "rug": "5m"}
+    assert exits.loc["up", "net_return"] == pytest.approx(0.34)
+    assert set(exits["checkpoint"]) == {"quick_exit"}
 
 
 def test_summary_ignores_broken_prices_and_uses_liquid_control():
     checks = pd.DataFrame([
-        {"pool_address": "p1", "checkpoint": "24h", "group": "pick", "net_return": -0.5, "gross_return": -0.5, "rugged": False},
-        {"pool_address": "c1", "checkpoint": "24h", "group": "control", "net_return": -1.0, "gross_return": -1.0, "rugged": True},
-        {"pool_address": "c2", "checkpoint": "24h", "group": "control", "net_return": -0.1, "gross_return": -0.1, "rugged": False},
-        {"pool_address": "c3", "checkpoint": "24h", "group": "control", "net_return": 1.6e7, "gross_return": 1.6e7, "rugged": False},
+        {"entry_id": "p1", "checkpoint": "24h", "group": "trending", "net_return": -0.5, "gross_return": -0.5, "rugged": False},
+        {"entry_id": "c1", "checkpoint": "24h", "group": "control", "net_return": -1.0, "gross_return": -1.0, "rugged": True},
+        {"entry_id": "c2", "checkpoint": "24h", "group": "control", "net_return": -0.1, "gross_return": -0.1, "rugged": False},
+        {"entry_id": "c3", "checkpoint": "24h", "group": "control", "net_return": 1.6e7, "gross_return": 1.6e7, "rugged": False},
     ])
-    candidates = pd.DataFrame({"pool_address": ["p1", "c1", "c2", "c3"], "liquidity_usd": [50_000, 30_000, 2_000, 40_000]})
-    table = journal.summarize(journal.add_liquid_control(checks, candidates, 20_000)).set_index("group")
+    candidates = pd.DataFrame({"entry_id": ["p1", "c1", "c2", "c3"], "liquidity_usd": [50_000, 30_000, 2_000, 40_000]})
+    table = journal.summarize(journal.add_liquid_control(journal.clean(checks), candidates, 20_000)).set_index("group")
     assert table.loc["control", "tokens"] == 2  # the 16-million-x reading is left out
     assert table.loc["control_liquid", "tokens"] == 1  # only c1 was liquid (c3 is broken)
     assert table.loc["control_liquid", "rugged"] == 1.0
@@ -266,21 +306,27 @@ def test_scan_track_report_end_to_end(tmp_path, capsys):
         "contract_addresses=0xgood_t": goplus_evm("0xgood_t"),
         "contract_addresses=0xbad_t": goplus_evm("0xbad_t", is_honeypot="1"),
     }
-    cfg = {**CFG, "control_rate": 0.0}  # no random comparison picks in this test
+    cfg = {**CFG, "control_rate": 0.0}  # comparison draws all come out "not chosen" in this test
     client = FakeClient(routes)
     rows = memescan.scan(client, cfg, random.Random(1), NOW, candidates)
-    assert {r["pool_address"]: r["group"] for r in rows} == {"0xgood": "pick", "0xbad": ""}  # young: not judged
+    picks = {(r["strategy"], r["pool_address"]) for r in rows if r["group"] == "pick"}
+    assert picks == {("trending", "0xgood"), ("not_pumped", "0xgood")}  # 2 hours old: too old for "early"
+    judged = {(r["strategy"], r["pool_address"]) for r in rows}
+    assert ("trending", "0xbad") in judged and ("trending", "0xyoung") not in judged  # young: judged later
+    assert ("control", "0xyoung") in judged  # the comparison draw happens once per pool, at first sight
     assert not any("0xyoung_t" in u for u in client.urls)  # no security lookup wasted on it
+    assert sum("contract_addresses=0xgood_t" in u for u in client.urls) == 1  # one lookup shared by strategies
 
-    # Scanning again does not record the same pools twice.
+    # Scanning again does not judge the same entries twice.
     assert memescan.scan(FakeClient(routes), cfg, random.Random(1), NOW, candidates) == []
 
     later = NOW + pd.Timedelta(hours=25)
     price_now = gt_pool("0xgood", "0xgood_t", price=0.002)
     tracked = memescan.track(FakeClient({"pools/multi": price_now}), cfg, later, candidates, checks)
-    assert {r["checkpoint"] for r in tracked} == {"1h", "24h"}  # 7d not due yet
+    assert {r["checkpoint"] for r in tracked} == {"5m", "15m", "30m", "1h", "24h"}  # 7d not due yet
+    assert len(tracked) == 2 * 5 and {r["group"] for r in tracked} == {"trending", "not_pumped"}
     assert all(r["gross_return"] == pytest.approx(1.0) for r in tracked)
 
-    memescan.report(candidates, checks)
+    memescan.report(candidates, checks, cfg)
     out = capsys.readouterr().out
-    assert "picks: 1" in out and "honeypot" in out
+    assert "trending    picks:     1" in out and "honeypot" in out and "quick_exit" in out

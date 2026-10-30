@@ -6,8 +6,14 @@ from .security import SecurityReport
 from .sources import Pool
 
 
+NOT_READY = {"too new", "low liquidity", "little trading", "nobody has sold (possible honeypot)"}
+
+
 def market_reasons(pool: Pool, cfg: dict, now: pd.Timestamp, top_symbols: set[str] = frozenset()) -> list[str]:
-    """Cheap checks from pool data alone (no extra API calls)."""
+    """Cheap checks from pool data alone (no extra API calls). `cfg` is one strategy's rules.
+
+    Reasons in NOT_READY can change as a pool matures, so such pools are re-checked later.
+    """
     reasons = []
     if not pool.coingecko_id and pool.symbol.strip().lower() in top_symbols:
         reasons.append("copies the ticker of a top-250 coin")
@@ -24,6 +30,8 @@ def market_reasons(pool: Pool, cfg: dict, now: pd.Timestamp, top_symbols: set[st
         reasons.append("little trading")
     if pool.sells_h1 == 0:
         reasons.append("nobody has sold (possible honeypot)")
+    if "max_change_h1" in cfg and not pool.change_h1 < cfg["max_change_h1"]:
+        reasons.append("already pumped (or price change unknown)")
     return reasons
 
 

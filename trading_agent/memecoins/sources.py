@@ -23,6 +23,8 @@ class Pool:
     buys_h1: int
     sells_h1: int
     coingecko_id: str | None  # set for established tokens that CoinGecko already lists
+    change_h1: float = float("nan")  # price change over the last hour, as a fraction (0.5 = +50%)
+    change_h6: float = float("nan")
 
 
 def _float(value) -> float:
@@ -42,6 +44,7 @@ def parse_pools(payload: dict, network: str) -> list[Pool]:
         token_id = rel.get("base_token", {}).get("data", {}).get("id", "")
         token = tokens.get(token_id, {})
         h1 = a.get("transactions", {}).get("h1", {}) or {}
+        change = a.get("price_change_percentage") or {}
         pools.append(Pool(
             network=network,
             pool_address=a.get("address", ""),
@@ -57,6 +60,8 @@ def parse_pools(payload: dict, network: str) -> list[Pool]:
             buys_h1=int(h1.get("buys") or 0),
             sells_h1=int(h1.get("sells") or 0),
             coingecko_id=token.get("coingecko_coin_id"),
+            change_h1=_float(change.get("h1")) / 100,
+            change_h6=_float(change.get("h6")) / 100,
         ))
     return pools
 

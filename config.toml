@@ -23,19 +23,43 @@ original = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
 # New-token scanner (paper only). GeckoTerminal network ids.
 networks = ["solana", "base", "bsc", "eth"]
 pages = 1                       # pages of new pools and of trending pools per network, per scan
-min_age_minutes = 15            # younger pools are "not ready yet" and re-checked later
-max_age_hours = 24
-min_liquidity_usd = 20000
-min_trades_h1 = 50              # buys + sells in the last hour
+# Safety checks, shared by every strategy
 max_tax = 0.05                  # buy/sell/transfer tax
 max_top10_share = 0.30          # 10 biggest ordinary wallets (EVM chains)
 min_lp_locked = 0.90            # share of liquidity locked or burned
-control_rate = 0.2              # share of failing pools tracked as a comparison group
+# Comparison group: a random sample of ALL listed pools, whatever the rules say
+control_rate = 0.2
 control_min_liquidity_usd = 1000
+control_liquid_usd = 20000      # "equally liquid" comparison = control pools with at least this much
+# Quick-exit rule tested on every strategy: sell at the first check (5m/15m/30m/1h)
+# at or above +take_profit or at or below -stop_loss, otherwise sell at 1 hour.
+quick_exit_take_profit = 0.30
+quick_exit_stop_loss = 0.20
 # Paper-trade cost model
 trade_usd = 100
 dex_fee = 0.003                 # per swap
 gas_usd = { solana = 0.01, base = 0.05, bsc = 0.10, eth = 3.0 }   # per swap
+
+# Entry strategies (fixed 2026-10-30, before seeing any of their results).
+# Each is an independent paper trader with its own entry time and price.
+[memecoins.strategies.trending]  # the week-1 rules
+min_age_minutes = 15
+max_age_hours = 24
+min_liquidity_usd = 20000
+min_trades_h1 = 50              # buys + sells in the last hour
+
+[memecoins.strategies.early]     # before most of the hype
+min_age_minutes = 15
+max_age_hours = 1
+min_liquidity_usd = 10000
+min_trades_h1 = 30
+
+[memecoins.strategies.not_pumped]  # trending, but not after a big run-up
+min_age_minutes = 15
+max_age_hours = 24
+min_liquidity_usd = 20000
+min_trades_h1 = 50
+max_change_h1 = 0.50            # price rose less than 50% in the last hour
 
 [funding]
 # Market-wide sentiment from perpetual-futures funding rates (public data).

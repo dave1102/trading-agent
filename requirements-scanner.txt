@@ -1,0 +1,4 @@
+# Only what the meme coin scanner needs (used by the Docker image on the server)
+pandas>=2.1
+numpy>=1.26
+requests>=2.31

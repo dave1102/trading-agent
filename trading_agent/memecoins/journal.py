@@ -1,11 +1,12 @@
-"""The scanner's journal: every token it looked at, and what happened to the ones it tracks.
+"""The scanner's journal: every entry it judged, and what happened to the tracked ones.
 
-    candidates.csv   one row per pool, the first time it is seen
-    checks.csv       one row per (tracked pool, checkpoint), e.g. price after 1h / 24h / 7d
+    candidates.csv   one row per ENTRY = (strategy, pool), the first time it is judged
+    checks.csv       one row per (tracked entry, checkpoint), e.g. price after 5m ... 7d
 
-Tracked groups:
-    pick     passed every rule
-    control  a random sample of pools that failed, for comparison ("do the rules help?")
+Each strategy (trending, early, not_pumped) is an independent paper trader with its
+own entry time and price. Tracked groups:
+    pick     a strategy's entry that passed every rule
+    control  a random sample of all listed pools, for comparison ("do the rules help?")
 """
 
 import csv
@@ -14,19 +15,27 @@ from pathlib import Path
 import pandas as pd
 
 CANDIDATE_COLUMNS = [
-    "seen_at", "network", "pool_address", "token_address", "symbol", "name", "dex", "pool_created_at",
-    "price_usd", "liquidity_usd", "fdv_usd", "volume_h1", "buys_h1", "sells_h1",
-    "passed", "group", "sell_tax", "reasons",
+    "entry_id", "strategy", "seen_at", "network", "pool_address", "token_address", "symbol", "name", "dex",
+    "pool_created_at", "price_usd", "liquidity_usd", "fdv_usd", "volume_h1", "buys_h1", "sells_h1",
+    "change_h1", "change_h6", "passed", "group", "sell_tax", "reasons",
 ]
 CHECK_COLUMNS = [
-    "network", "pool_address", "symbol", "group", "checkpoint", "checked_at",
+    "entry_id", "strategy", "network", "pool_address", "symbol", "group", "checkpoint", "checked_at",
     "price_usd", "liquidity_usd", "gross_return", "net_return", "rugged",
 ]
-CHECKPOINTS = {"1h": pd.Timedelta(hours=1), "24h": pd.Timedelta(hours=24), "7d": pd.Timedelta(days=7)}
+CHECKPOINTS = {
+    "5m": pd.Timedelta(minutes=5), "15m": pd.Timedelta(minutes=15), "30m": pd.Timedelta(minutes=30),
+    "1h": pd.Timedelta(hours=1), "24h": pd.Timedelta(hours=24), "7d": pd.Timedelta(days=7),
+}
+QUICK_EXIT_CHECKPOINTS = ["5m", "15m", "30m", "1h"]  # the last one is the forced exit
 RUG_LIQUIDITY_DROP = 0.9  # liquidity down 90%+ from entry = treat as a rug pull (total loss)
 # A price up more than 100x is almost always a broken reading (e.g. a pool's first price),
 # not a real trade result; such checks are left out of the summaries.
 SUSPECT_GROSS = 99.0
+
+
+def entry_id(strategy: str, pool_address: str) -> str:
+    return f"{strategy}:{pool_address}"
 
 
 def safe_text(value) -> str:
@@ -50,7 +59,9 @@ def append_rows(path: Path, columns: list[str], rows: list[dict]) -> None:
 
 
 def read_csv(path: Path) -> pd.DataFrame:
-    return pd.read_csv(path, dtype={"pool_address": str, "token_address": str}) if path.exists() else pd.DataFrame()
+    if not Path(path).exists():
+        return pd.DataFrame()
+    return pd.read_csv(path, dtype={"pool_address": str, "token_address": str, "entry_id": str})
 
 
 def side_cost(liquidity_usd: float, trade_usd: float, cfg: dict, network: str, tax: float = 0.0) -> float:
@@ -84,69 +95,80 @@ def net_return(entry: dict, price_usd: float, liquidity_usd: float, cfg: dict) -
     return gross, (1 + gross) * (1 - buy) * (1 - sell) - 1, False
 
 
+def label(row) -> str:
+    """Results are reported per strategy for picks, and as 'control' for the comparison group."""
+    return row["strategy"] if row["group"] == "pick" else "control"
+
+
 def due_checks(candidates: pd.DataFrame, checks: pd.DataFrame, now: pd.Timestamp) -> pd.DataFrame:
-    """Tracked candidates with a checkpoint that is due and not yet recorded."""
+    """Tracked entries with a checkpoint that is due and not yet recorded."""
     if candidates.empty:
         return pd.DataFrame()
     tracked = candidates[candidates["group"].isin(["pick", "control"])]
-    done = set() if checks.empty else set(zip(checks["pool_address"], checks["checkpoint"]))
+    done = set() if checks.empty else set(zip(checks["entry_id"], checks["checkpoint"]))
     rows = []
     for _, c in tracked.iterrows():
         seen = pd.Timestamp(c["seen_at"])
         for name, delay in CHECKPOINTS.items():
-            if seen + delay <= now and (c["pool_address"], name) not in done:
+            if seen + delay <= now and (c["entry_id"], name) not in done:
                 rows.append({**c.to_dict(), "checkpoint": name})
     return pd.DataFrame(rows)
 
 
+def clean(checks: pd.DataFrame) -> pd.DataFrame:
+    """Drop broken price readings (impossible jumps)."""
+    if checks.empty or "gross_return" not in checks.columns:
+        return checks
+    return checks[~(checks["gross_return"] > SUSPECT_GROSS)]
+
+
 def add_liquid_control(checks: pd.DataFrame, candidates: pd.DataFrame, min_liquidity: float) -> pd.DataFrame:
-    """Add 'control_liquid' rows: comparison pools that were at least as liquid as picks must be.
+    """Add 'control_liquid' rows: comparison pools at least as liquid as the strictest picks.
 
     The full comparison group is mostly tiny, inactive pools, which mainly lose to costs;
     pools as liquid as the picks are the fair comparison.
     """
     if checks.empty or candidates.empty:
         return checks
-    liquidity = candidates.set_index("pool_address")["liquidity_usd"]
-    liquid = checks[(checks["group"] == "control") & (checks["pool_address"].map(liquidity) >= min_liquidity)]
+    liquidity = candidates.set_index("entry_id")["liquidity_usd"]
+    liquid = checks[(checks["group"] == "control") & (checks["entry_id"].map(liquidity) >= min_liquidity)]
     return pd.concat([checks, liquid.assign(group="control_liquid")], ignore_index=True)
 
 
-def verdict_lines(table: pd.DataFrame, min_tokens: int = 100) -> list[str]:
-    """Plain-English reading of the summary table, one line per checkpoint.
+def quick_exit(checks: pd.DataFrame, take_profit: float, stop_loss: float) -> pd.DataFrame:
+    """Simulate 'sell at +take_profit or -stop_loss, else at 1 hour' for every tracked entry.
 
-    Judged by the MEDIAN trade: a few huge winners or broken readings cannot distort it.
+    Uses only the 5m / 15m / 30m / 1h checks, so prices between checks are unseen: an
+    approximation (real exits would sometimes be better or worse). Entries without a
+    complete set of short checks up to their exit are left out.
     """
-    lines = []
-    for checkpoint in CHECKPOINTS:
-        rows = table[table["checkpoint"] == checkpoint].set_index("group") if not table.empty else table
-        if "pick" not in rows.index:
-            lines.append(f"{checkpoint}: no results yet.")
-            continue
-        pick = rows.loc["pick"]
-        if pick["tokens"] < min_tokens:
-            lines.append(f"{checkpoint}: only {int(pick['tokens'])} picks so far - too early to judge (need {min_tokens}+).")
-            continue
-        money = "MADE money" if pick["median_net"] > 0 else "LOST money"
-        line = (f"{checkpoint}: the typical pick {money} ({pick['median_net']:+.1%} after costs; "
-                f"{pick['positive']:.0%} ended up, {pick['rugged']:.0%} rugged).")
-        control_group = "control_liquid" if "control_liquid" in rows.index else "control"
-        if control_group in rows.index:
-            control = rows.loc[control_group]
-            better = "the rules HELPED" if pick["median_net"] > control["median_net"] else "the rules did NOT help"
-            line += (f" Equally liquid comparison pools: {control['median_net']:+.1%}, "
-                     f"{control['rugged']:.0%} rugged, so {better}.")
-        lines.append(line)
-    return lines
+    if checks.empty:
+        return pd.DataFrame()
+    short = checks[checks["checkpoint"].isin(QUICK_EXIT_CHECKPOINTS)]
+    order = {name: i for i, name in enumerate(QUICK_EXIT_CHECKPOINTS)}
+    rows = []
+    for eid, entry in short.groupby("entry_id"):
+        entry = entry.assign(_order=entry["checkpoint"].map(order)).sort_values("_order")
+        if list(entry["checkpoint"]) != QUICK_EXIT_CHECKPOINTS[: len(entry)]:
+            continue  # a short check is missing
+        exit_row = None
+        for _, check in entry.iterrows():
+            if check["rugged"] or check["gross_return"] >= take_profit or check["gross_return"] <= -stop_loss \
+                    or check["checkpoint"] == QUICK_EXIT_CHECKPOINTS[-1]:
+                exit_row = check
+                break
+        if exit_row is not None:
+            rows.append({**exit_row.drop(labels="_order").to_dict(), "checkpoint": "quick_exit",
+                         "exit_at": exit_row["checkpoint"]})
+    return pd.DataFrame(rows)
 
 
 def summarize(checks: pd.DataFrame) -> pd.DataFrame:
-    """Per group and checkpoint: how many, median/mean result after costs, share positive, share rugged."""
+    """Per checkpoint and group: how many, median/mean result after costs, share positive, share rugged."""
+    checks = clean(checks)
     if checks.empty:
         return pd.DataFrame()
-    if "gross_return" in checks.columns:
-        checks = checks[~(checks["gross_return"] > SUSPECT_GROSS)]  # drop broken price readings
-    order = {name: i for i, name in enumerate(CHECKPOINTS)}
+    order = {name: i for i, name in enumerate([*CHECKPOINTS, "quick_exit"])}
     table = checks.groupby(["checkpoint", "group"]).agg(
         tokens=("net_return", "size"),
         median_net=("net_return", "median"),
@@ -155,3 +177,34 @@ def summarize(checks: pd.DataFrame) -> pd.DataFrame:
         rugged=("rugged", "mean"),
     ).reset_index()
     return table.sort_values(["checkpoint", "group"], key=lambda s: s.map(order) if s.name == "checkpoint" else s)
+
+
+def verdict_lines(table: pd.DataFrame, strategies: list[str], min_tokens: int = 100,
+                  checkpoints=("quick_exit", "1h", "24h")) -> list[str]:
+    """Plain-English reading of the summary table, per strategy and checkpoint.
+
+    Judged by the MEDIAN trade: a few huge winners or broken readings cannot distort it.
+    """
+    lines = []
+    for strategy in strategies:
+        for checkpoint in checkpoints:
+            rows = table[table["checkpoint"] == checkpoint].set_index("group") if not table.empty else table
+            name = f"{strategy} @ {checkpoint}"
+            if strategy not in rows.index:
+                lines.append(f"{name}: no results yet.")
+                continue
+            pick = rows.loc[strategy]
+            if pick["tokens"] < min_tokens:
+                lines.append(f"{name}: only {int(pick['tokens'])} trades so far - too early to judge (need {min_tokens}+).")
+                continue
+            money = "MADE money" if pick["median_net"] > 0 else "LOST money"
+            line = (f"{name}: the typical trade {money} ({pick['median_net']:+.1%} after costs; "
+                    f"{pick['positive']:.0%} ended up, {pick['rugged']:.0%} rugged).")
+            control_group = "control_liquid" if "control_liquid" in rows.index else "control"
+            if control_group in rows.index:
+                control = rows.loc[control_group]
+                better = "the rules HELPED" if pick["median_net"] > control["median_net"] else "the rules did NOT help"
+                line += (f" Equally liquid random pools: {control['median_net']:+.1%}, "
+                         f"{control['rugged']:.0%} rugged, so {better}.")
+            lines.append(line)
+    return lines
