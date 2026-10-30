@@ -1,6 +1,6 @@
 @echo off
-rem Stops the background meme scanner. It starts again at your next sign-in
-rem (or double-click start_scanner.cmd).
-powershell -NoProfile -Command "$p = Get-CimInstance Win32_Process -Filter \"Name='pythonw.exe' OR Name='python.exe'\" | Where-Object { $_.CommandLine -like '*trading_agent.memescan run*' }; if ($p) { $p | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; 'Scanner stopped.' } else { 'Scanner was not running.' }"
+rem Stops the meme scanner on the server. Start it again with start_scanner.cmd.
+rem (It also starts again by itself if the server reboots.)
+ssh -o ConnectTimeout=20 vps "docker stop memescan >/dev/null && echo Scanner stopped."
 echo.
 pause
