@@ -123,7 +123,10 @@ def update(cfg: dict, out_dir: Path = OUT_DIR, today: pd.Timestamp | None = None
     today = today or pd.Timestamp.now(tz="UTC").floor("1D")
     results = forward_results(opens, closes, pd.Timestamp(tcfg["start"], tz="UTC"), today,
                               c.fee_rate + c.spread / 2 + c.slippage, tcfg["initial_cash"])
-    if results:
+    if not results:
+        print(f"[{pd.Timestamp.now(tz='UTC'):%Y-%m-%d %H:%M} UTC] prices updated; "
+              f"waiting for the start date {tcfg['start']}")
+    else:
         added, drift = append_snapshots(out_dir / "equity_log.csv", results)
         write_outputs(out_dir, results)
         print(f"[{pd.Timestamp.now(tz='UTC'):%Y-%m-%d %H:%M} UTC] updated to {today:%Y-%m-%d}"
