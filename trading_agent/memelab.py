@@ -47,6 +47,7 @@ MIN_LIQUIDITY = [0, 5_000, 20_000, 50_000]
 MIN_BUY_SHARE = [0.0, 0.5, 0.6]                   # buys / (buys + sells) in the hour before
 NETWORKS = ["all", "solana", "base", "bsc", "eth"]
 MIN_TRADES = 200                                  # a rule must have this many design trades
+LAUNCHPAD_DEXES = {"pump-fun", "meteora-dbc"}
 
 
 def tracked_entries(paths=CANDIDATE_FILES) -> pd.DataFrame:
@@ -331,6 +332,11 @@ def analyze(cost_cfg: dict, top: int = 15) -> None:
     print(f"  Design: {winner['design_mean']:+.1%} per trade over {winner['design_trades']} trades")
     print(f"  TEST:   {winner['test_mean']:+.1%} per trade over {winner['test_trades']} trades "
           f"(90% range {lo:+.1%} to {hi:+.1%})")
+    # Launchpad pools (pump.fun, Meteora DBC) move to a new pool when they "graduate"; the old
+    # pool then empties, which this replay counts as a rug. Show the result without them too.
+    launchpad = entries["dex"].astype(str).isin(LAUNCHPAD_DEXES)
+    plain = nets.loc[mask & ~design & ~launchpad, winner["sell_rule"]].dropna()
+    print(f"  Without launchpad pools (possible false rugs): {plain.mean():+.1%} per trade over {len(plain)} trades")
     share_positive = (results.head(100)["test_mean"] > 0).mean()
     print(f"  Of the top 100 design rules, {share_positive:.0%} also made money on test.")
 
