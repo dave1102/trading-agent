@@ -68,6 +68,23 @@ min_liquidity_usd = 20000
 min_trades_h1 = 50
 max_change_h1 = 0.50            # price rose less than 50% in the last hour
 
+[memecoins.strategies.bsc_momentum]  # fixed 2026-11-03 from the rule lab, BEFORE its forward test
+# Lab result (scanner v2 data, Oct 30 - Nov 2): +6.5% design / +10.9% test per trade, entry at the
+# next minute's open, sold after 5 minutes. Only a lead: many of those tokens were unknown to the
+# honeypot checker. Verdict: `python -m trading_agent.memelab forward`, after 100+ trades.
+networks = ["bsc"]
+judge_once = true               # judged only when first seen, as in the lab
+security = "basic"              # known to GoPlus, not a honeypot, taxes known and <= max_tax
+max_tax = 0.10
+min_age_minutes = 0
+max_age_hours = 100000          # any age
+min_liquidity_usd = 5000
+min_trades_h1 = 1
+min_buy_share = 0.5             # at least half of last hour's trades were buys
+forward_start = "2026-11-03T21:00:00+00:00"
+forward_stop_loss = 0.10        # replayed on 1-minute candles
+forward_hold_minutes = 5
+
 [funding]
 # Market-wide sentiment from perpetual-futures funding rates (public data).
 # Deribit has hourly history from 2022 for BTC and ETH; used as inputs for every coin.

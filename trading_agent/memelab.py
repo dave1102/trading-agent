@@ -18,6 +18,7 @@ Honest-testing rules:
 
 import argparse
 import random
+import time
 import traceback
 from pathlib import Path
 
@@ -79,7 +80,8 @@ def fetch(client, entries: pd.DataFrame, now: pd.Timestamp, candles_path=CANDLES
     (rng or random.Random(0)).shuffle(todo)
     if reverse:
         todo.reverse()
-    todo.sort(key=lambda r: float(r["liquidity_usd"]) < PRIORITY_LIQUIDITY)  # stable: keeps the random order
+    # Strategy picks first (forward tests wait on them), then bigger pools; stable, so random within each.
+    todo.sort(key=lambda r: (r.get("group") != "pick", float(r["liquidity_usd"]) < PRIORITY_LIQUIDITY))
     print(f"{len(done_keys):,} pools already done, {len(todo):,} to fetch (about {len(todo) * client.min_interval / 3600:.1f} h)")
     for i, r in enumerate(todo, 1):
         seen = pd.Timestamp(r["seen_at"])
@@ -273,12 +275,14 @@ def model_test(entries: pd.DataFrame, nets: pd.Series, rng: np.random.Generator)
     from sklearn.ensemble import HistGradientBoostingRegressor
 
     X = features(entries)
-    design = (entries["period"] == "design").to_numpy()
+    known = nets.notna().to_numpy()  # broken readings were left out
+    design = (entries["period"] == "design").to_numpy() & known
+    testing = (entries["period"] != "design").to_numpy() & known
     model = HistGradientBoostingRegressor(max_depth=3, learning_rate=0.05, max_iter=200,
                                           min_samples_leaf=50, random_state=0)
     model.fit(X[design], nets[design].clip(-1, 3))  # clip: one lucky 50x must not steer the model
-    predicted = pd.Series(model.predict(X[~design]), index=X.index[~design])
-    test = nets[~design]
+    predicted = pd.Series(model.predict(X[testing]), index=X.index[testing])
+    test = nets[testing]
     picked = test[predicted >= predicted.quantile(0.8)]  # the 20% it likes best
     return {"all": stats(test), "picked": stats(picked), "picked_range": bootstrap_mean(picked.to_numpy(), rng),
             "positive_predictions": int((predicted > 0).sum())}
@@ -372,6 +376,75 @@ def analyze(cost_cfg: dict, top: int = 15) -> None:
     print("Paper replay only. Prices between trades, bots and failed sells make real results worse.")
 
 
+def replay_next_minute(entry, candles: pd.DataFrame, rug_at, tp, sl, hold_min: float, cost_cfg: dict) -> dict | None:
+    """Like replay(), but buying at the open of the first minute after the scanner saw the pool
+    (the soonest a real trade could fill). None if nothing traded within 2 minutes."""
+    first = candles[candles["minute"] <= 2]
+    if first.empty:
+        return None
+    start = float(first["minute"].iloc[0])
+    entry = entry.copy()
+    entry["price_usd"] = float(first["open"].iloc[0])
+    later = candles.assign(minute=candles["minute"] - start)
+    return replay(entry, later[later["minute"] >= 0], None if rug_at is None else rug_at - start,
+                  tp, sl, hold_min, cost_cfg)
+
+
+def forward(cost_cfg: dict, strategy: str = "bsc_momentum", min_trades: int = 100) -> None:
+    """Forward paper test of a strategy fixed in config.toml, replayed on 1-minute candles.
+
+    Pre-registered verdict: PASS only with min_trades+ trades, a positive median trade AND the
+    90% range of the average trade above zero. Compared with comparison-group pools that meet
+    the same market rules but had no safety check.
+    """
+    rng = np.random.default_rng(0)
+    rules = cost_cfg["strategies"][strategy]
+    start = pd.Timestamp(rules["forward_start"])
+    candidates = journal.read_csv(CANDIDATE_FILES[-1])
+    fetched, candles = load_downloads()
+    done = set(map(tuple, fetched[KEY].astype(str).values)) if not fetched.empty else set()
+    candidates = candidates[pd.to_datetime(candidates["seen_at"], format="ISO8601") >= start]
+    buys, sells = candidates["buys_h1"].astype(float), candidates["sells_h1"].astype(float)
+    same_market = ((candidates["network"].isin(rules["networks"]))
+                   & (candidates["liquidity_usd"].astype(float) >= rules["min_liquidity_usd"])
+                   & ((buys / (buys + sells).replace(0, np.nan)).fillna(0) >= rules["min_buy_share"]))
+    groups = {
+        "strategy": candidates[(candidates["strategy"] == strategy) & (candidates["group"] == "pick")],
+        "comparison": candidates[(candidates["group"] == "control") & same_market],
+    }
+    checks = journal.read_csv(CHECK_FILES[-1])
+    print(f"Forward paper test: {strategy} (since {start:%Y-%m-%d %H:%M} UTC, ${cost_cfg['trade_usd']:,} per trade)")
+    print(f"  buy at the next minute's open, sell after {rules['forward_hold_minutes']} min "
+          f"or at -{rules['forward_stop_loss']:.0%}; costs included")
+    results = {}
+    for name, group in groups.items():
+        ready = group[[tuple(map(str, k)) in done for k in group[KEY].values]]
+        nets = []
+        for e, c, rug in prepare(ready, candles, checks) if len(ready) else []:
+            r = replay_next_minute(e, c, rug, None, rules["forward_stop_loss"], rules["forward_hold_minutes"], cost_cfg)
+            if r is not None and r["gross"] <= journal.SUSPECT_GROSS:
+                nets.append(r["net"])
+        v = np.array(nets)
+        results[name] = v
+        waiting = len(group) - len(ready)
+        if len(v):
+            lo, hi = bootstrap_mean(v, rng)
+            print(f"  {name:10} {len(v):4} trades: average {v.mean():+.1%} (90% range {lo:+.1%} to {hi:+.1%}), "
+                  f"typical {np.median(v):+.1%}, {np.mean(v > 0):.0%} made money"
+                  f"{f'; {waiting} waiting for candles' if waiting else ''}")
+        else:
+            print(f"  {name:10}    0 trades yet{f'; {waiting} waiting for candles' if waiting else ''}")
+    v = results["strategy"]
+    if len(v) < min_trades:
+        print(f"\n  VERDICT: too early - {len(v)} of {min_trades} trades.")
+        return
+    lo, _ = bootstrap_mean(v, rng)
+    passed = np.median(v) > 0 and lo > 0
+    print(f"\n  VERDICT: {'PASS - the edge held up on new data' if passed else 'FAIL - no reliable edge'} "
+          f"(needs a positive typical trade and the 90% range above zero).")
+    print("  Paper only. Real trading adds bots, delays and failed sells.")
+
+
 def _fmt(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     for col in df.columns:
@@ -391,11 +464,17 @@ def main() -> None:
     p_fetch.add_argument("--log", type=Path)
     p_fetch.add_argument("--reverse", action="store_true", help="start from the other end (for a second machine)")
     p_fetch.add_argument("--suffix", default="", help="separate output files, e.g. '_pc' (merged by analyze)")
+    p_fetch.add_argument("--every", type=float, help="repeat every this many hours (for the server)")
     p_an = sub.add_parser("analyze", help="replay buying and selling rules on the downloaded candles")
     p_an.add_argument("--trade-usd", type=float, help="paper trade size (default: memecoins.trade_usd)")
+    p_fw = sub.add_parser("forward", help="forward paper test of a strategy fixed in config.toml")
+    p_fw.add_argument("--strategy", default="bsc_momentum")
     args = parser.parse_args()
-    if args.command == "analyze":
+    if args.command in ("analyze", "forward"):
         cfg = dict(load_config()["memecoins"])
+        if args.command == "forward":
+            forward(cfg, args.strategy)
+            return
         if args.trade_usd:
             cfg["trade_usd"] = args.trade_usd
         analyze(cfg)
@@ -404,13 +483,17 @@ def main() -> None:
         if args.log:
             log_to_file(args.log)
         with single_instance(DATA_DIR / f"lab{args.suffix}.lock"):
-            try:
-                fetch(ApiClient(min_interval=args.interval), tracked_entries(), pd.Timestamp.now(tz="UTC"),
-                      DATA_DIR / f"lab_candles{args.suffix}.csv", DATA_DIR / f"lab_fetched{args.suffix}.csv",
-                      reverse=args.reverse)
-                print("Download finished.")
-            except Exception:
-                traceback.print_exc()
+            while True:
+                try:
+                    fetch(ApiClient(min_interval=args.interval), tracked_entries(), pd.Timestamp.now(tz="UTC"),
+                          DATA_DIR / f"lab_candles{args.suffix}.csv", DATA_DIR / f"lab_fetched{args.suffix}.csv",
+                          reverse=args.reverse)
+                    print(f"[{pd.Timestamp.now(tz='UTC'):%Y-%m-%d %H:%M} UTC] download finished.")
+                except Exception:  # running unattended: log it and retry next time
+                    traceback.print_exc()
+                if not args.every:
+                    break
+                time.sleep(args.every * 3600)
 
 
 if __name__ == "__main__":

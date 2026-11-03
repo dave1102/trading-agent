@@ -72,18 +72,21 @@ def scan(client, cfg: dict, rng: random.Random, now=None, candidates_path=CANDID
         for pool in unique.values():
             for name, rules in strategies.items():
                 eid = journal.entry_id(name, pool.pool_address)
-                if eid in judged:
+                if eid in judged or network not in rules.get("networks", cfg["networks"]):
                     continue
                 reasons, sell_tax = market_reasons(pool, rules, now, top_symbols), None
                 if not reasons:
                     if pool.token_address not in security_cache:
                         try:
-                            report = check_token(client, network, pool.token_address)
-                            security_cache[pool.token_address] = (security_reasons(report, cfg), report.sell_tax)
+                            security_cache[pool.token_address] = check_token(client, network, pool.token_address)
                         except requests.RequestException:
-                            security_cache[pool.token_address] = (["security check failed"], None)
-                    reasons, sell_tax = security_cache[pool.token_address]
-                elif set(reasons) <= NOT_READY:
+                            security_cache[pool.token_address] = None
+                    report = security_cache[pool.token_address]
+                    if report is None:
+                        reasons = ["security check failed"]
+                    else:
+                        reasons, sell_tax = security_reasons(report, {**cfg, **rules}), report.sell_tax
+                elif set(reasons) <= NOT_READY and not rules.get("judge_once"):
                     continue  # may still qualify later
                 group = "" if reasons else "pick"
                 picks[name] += group == "pick"

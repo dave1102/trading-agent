@@ -289,6 +289,24 @@ only ever appended), `trades.csv` and `holdings.csv`. Its results are at the top
 the Friday report. On the PC: `python -m trading_agent.trendpaper update` then
 `python -m trading_agent.trendpaper report`.
 
+**Meme rule lab** (`python -m trading_agent.memelab`): which buy and sell rules would have
+made money on the scanner's own data? `fetch` downloads 1-minute candles for the 4 hours
+after every tracked pool was found (on the server, the `memelab` container repeats this
+every 6 hours). `analyze` replays 180 selling rules x 60 buying filters on them, chooses
+the best on the earlier 60% of the data and judges it once on the rest. Stops count before
+targets in the same minute, rugs count from the earliest possible moment, and gains over
+100x are dropped as broken readings. Week 1 is left out: it was not checked in the first
+hour, so rugs there went unseen.
+
+**Forward paper test: `bsc_momentum`** (from 3 November 2026, fixed in `config.toml`
+before the test): BNB Chain, liquidity at least $5,000, at least half of last hour's trades
+were buys, and a basic safety check (known to GoPlus, not a honeypot, taxes known and at
+most 10%). Each pool is judged once, when first seen. Replayed on 1-minute candles: buy at
+the next minute's open, sell after 5 minutes or at -10%. `python -m trading_agent.memelab
+forward` shows the result next to comparison pools that meet the same market rules; it is
+also in the Friday report. Pre-set verdict after 100+ trades: PASS only if the typical trade
+is positive and the 90% range of the average trade is above zero.
+
 ### Step 5: Paper trade
 
 ```powershell
@@ -388,6 +406,15 @@ These are research results, not advice, and they will change as data grows.
   and lost more than logistic regression.
 - **Data note:** HistData's 2023 files are missing many whole hours from February
   to July. Other years are clean.
+- **Meme coin rule lab (5,895 pools, Oct 22 - Nov 2 2026): almost every rule loses.**
+  Selling rules on all pools lost 7-25% per trade. The first run looked like a +172%
+  winner, but three broken 100x readings drove it, and week-1 data missed early rugs (61%
+  of pools stopped trading within the hour, none were flagged). After fixing both, one
+  lead survived: BNB Chain pools with $5,000+ liquidity and mostly buyers, sold after 5
+  minutes. Buying at the next minute's open, that made +6.5% per trade on the design data
+  and +10.9% on the test data (median +3% to +5%). It may be partly honeypots, since the
+  safety service did not know 79% of those tokens, so it is now being forward-tested with
+  a safety check (`bsc_momentum`).
 
 Simple price-pattern models usually find no reliable edge in liquid markets. The
 value of this project is a testing setup that tells you so honestly, before any

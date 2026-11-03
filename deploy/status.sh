@@ -11,6 +11,11 @@ if [ "$(docker inspect -f '{{.State.Running}}' trendpaper 2>/dev/null)" = "true"
 else
   echo "Trend paper test is NOT running."
 fi
+if [ "$(docker inspect -f '{{.State.Running}}' memelab 2>/dev/null)" = "true" ]; then
+  echo "Candle downloader (rule lab) is RUNNING too"
+else
+  echo "Candle downloader (rule lab) is NOT running."
+fi
 echo
 echo "Latest scanner log lines:"
 tail -n 15 /opt/trading-agent/data/memecoins/scanner.log 2>/dev/null

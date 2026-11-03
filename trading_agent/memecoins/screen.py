@@ -32,14 +32,22 @@ def market_reasons(pool: Pool, cfg: dict, now: pd.Timestamp, top_symbols: set[st
         reasons.append("nobody has sold (possible honeypot)")
     if "max_change_h1" in cfg and not pool.change_h1 < cfg["max_change_h1"]:
         reasons.append("already pumped (or price change unknown)")
+    trades = pool.buys_h1 + pool.sells_h1
+    if "min_buy_share" in cfg and not (trades and pool.buys_h1 / trades >= cfg["min_buy_share"]):
+        reasons.append("more sellers than buyers")
     return reasons
 
 
 def security_reasons(report: SecurityReport, cfg: dict) -> list[str]:
-    """Scam checks. Anything unknown counts as a failure."""
+    """Scam checks. Anything unknown counts as a failure.
+
+    With cfg["security"] == "basic" only the can-I-sell checks apply: the token must be known,
+    not a honeypot, and its taxes known and within cfg["max_tax"].
+    """
     if not report.found:
         return ["security data unavailable"]
-    reasons = list(report.dangers)
+    basic = cfg.get("security") == "basic"
+    reasons = [] if basic else list(report.dangers)
     if report.honeypot is not False:
         reasons.append("honeypot" if report.honeypot else "honeypot check unknown")
     for name, value, limit in (("buy tax", report.buy_tax, cfg["max_tax"]), ("sell tax", report.sell_tax, cfg["max_tax"])):
@@ -47,6 +55,8 @@ def security_reasons(report: SecurityReport, cfg: dict) -> list[str]:
             reasons.append(f"{name} unknown")
         elif value > limit:
             reasons.append(f"{name} {value:.0%}")
+    if basic:
+        return list(dict.fromkeys(reasons))
     if report.mintable is not False:
         reasons.append("creator can mint more" if report.mintable else "mint authority unknown")
     if report.freezable is not False:

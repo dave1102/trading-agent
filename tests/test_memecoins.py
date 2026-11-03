@@ -330,3 +330,42 @@ def test_scan_track_report_end_to_end(tmp_path, capsys):
     memescan.report(candidates, checks, cfg)
     out = capsys.readouterr().out
     assert "trending    picks:     1" in out and "honeypot" in out and "quick_exit" in out
+
+
+MOMENTUM = {"networks": ["bsc"], "judge_once": True, "security": "basic", "max_tax": 0.10,
+            "min_age_minutes": 0, "max_age_hours": 100_000, "min_liquidity_usd": 5_000,
+            "min_trades_h1": 1, "min_buy_share": 0.5}
+
+
+def test_buy_share_rule():
+    [buyers] = parse_pools(gt_pool("0xa", buys=60, sells=40), "bsc")
+    assert market_reasons(buyers, MOMENTUM, NOW) == []
+    [sellers] = parse_pools(gt_pool("0xb", buys=30, sells=70), "bsc")
+    assert "more sellers than buyers" in market_reasons(sellers, MOMENTUM, NOW)
+
+
+def test_basic_security_checks_only_whether_you_can_sell():
+    risky_but_sellable = SecurityReport(found=True, honeypot=False, buy_tax=0.0, sell_tax=0.08, mintable=True,
+                                        freezable=None, lp_locked_share=None, dangers=["owner can change balances"])
+    assert security_reasons(risky_but_sellable, {**CFG, **MOMENTUM}) == []
+    assert security_reasons(risky_but_sellable, CFG) != []  # the full check still rejects it
+    honeypot = SecurityReport(found=True, honeypot=True, buy_tax=0.0, sell_tax=0.0)
+    assert security_reasons(honeypot, {**CFG, **MOMENTUM}) == ["honeypot"]
+    no_tax_data = SecurityReport(found=True, honeypot=False, buy_tax=None, sell_tax=0.0)
+    assert security_reasons(no_tax_data, {**CFG, **MOMENTUM}) == ["buy tax unknown"]
+    assert security_reasons(SecurityReport(found=False), {**CFG, **MOMENTUM}) == ["security data unavailable"]
+
+
+def test_strategy_limited_to_its_network_and_judged_once(tmp_path):
+    candidates = tmp_path / "candidates.csv"
+    routes = {
+        "new_pools": {"data": []},
+        "trending_pools": {"data": gt_pool("0xp", "0xp_t", liquidity=8_000)["data"]
+                           + gt_pool("0xthin", "0xthin_t", liquidity=2_000)["data"],
+                           "included": gt_pool("0xp", "0xp_t")["included"] + gt_pool("0xthin", "0xthin_t")["included"]},
+        "contract_addresses=0xp_t": goplus_evm("0xp_t"),
+    }
+    cfg = {**CFG, "networks": ["base", "bsc"], "control_rate": 0.0, "strategies": {"bsc_momentum": MOMENTUM}}
+    rows = memescan.scan(FakeClient(routes), cfg, random.Random(1), NOW, candidates)
+    mine = {(r["network"], r["pool_address"]): r["group"] for r in rows if r["strategy"] == "bsc_momentum"}
+    assert mine == {("bsc", "0xp"): "pick", ("bsc", "0xthin"): ""}  # nothing on base; thin pool rejected for good

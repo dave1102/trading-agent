@@ -125,3 +125,10 @@ def test_split_by_time_uses_only_v2_data_in_time_order():
     out = memelab.split_by_time(entries, design_share=0.6)
     assert len(out) == 5  # the week-1 row is dropped
     assert list(out["period"]) == ["design", "design", "design", "test", "test"]
+
+
+def test_replay_next_minute_buys_at_the_next_open():
+    candles = bars([(1, 1.10, 1.30, 1.10, 1.25), (6, 1.25, 1.25, 1.20, 1.21)])
+    r = memelab.replay_next_minute(ENTRY, candles, None, None, 0.1, 5, COSTS)
+    assert abs(r["gross"] - (1.25 / 1.10 - 1)) < 1e-9  # bought at 1.10 (not the stale 1.00), sold at minute 5's close
+    assert memelab.replay_next_minute(ENTRY, bars([(4, 1, 1, 1, 1)]), None, None, 0.1, 5, COSTS) is None
