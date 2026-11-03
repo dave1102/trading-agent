@@ -117,3 +117,11 @@ def test_rug_times_uses_last_good_check():
         "rugged": [False, False, True],
     })
     assert memelab.rug_times(checks)[("solana", "A")] == pd.Timestamp("2026-10-30T10:15:00+00:00")
+
+
+def test_split_by_time_uses_only_v2_data_in_time_order():
+    seen = [(T0 + pd.Timedelta(hours=h)).isoformat() for h in range(6)]
+    entries = pd.DataFrame({"seen_at": seen, "period": ["design"] + ["test"] * 5})
+    out = memelab.split_by_time(entries, design_share=0.6)
+    assert len(out) == 5  # the week-1 row is dropped
+    assert list(out["period"]) == ["design", "design", "design", "test", "test"]

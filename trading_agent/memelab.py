@@ -5,10 +5,11 @@ group) plus 1-minute price candles for the 4 hours after each was found, so sell
 rules like "take +30% profit or cut at -20%" can be replayed minute by minute.
 
     python -m trading_agent.memelab fetch      # download candles (slow: ~4 s per pool; resumable)
-    python -m trading_agent.memelab analyze    # replay rules; design on week 1, test on later data
+    python -m trading_agent.memelab analyze    # replay rules; design on the earlier 60%, test on the rest
 
 Honest-testing rules:
-  * Rules are chosen on the DESIGN period (scanner week 1) and judged once on the TEST period.
+  * Rules are chosen on the DESIGN period (first 60% of the scanner v2 data by time) and judged
+    once on the TEST period (the rest). Week 1 is left out: it was not checked in the first hour.
   * Entry = the price the scanner saw; exits use only candles that started after that minute.
   * If a stop and a target are both hit in the same minute, the stop counts (pessimistic).
   * A rug pull (liquidity gone at a later check) counts as -100% from the previous check on.
@@ -211,10 +212,15 @@ def rule_name(tp, sl, hold) -> str:
 
 
 def replay_all(prepared: list[tuple], cost_cfg: dict) -> pd.DataFrame:
-    """Net result of every entry under every exit rule: rows = entries, columns = exit rules."""
+    """Net result of every entry under every exit rule: rows = entries, columns = exit rules.
+
+    A gain above SUSPECT_GROSS (100x) is almost always a broken reading; like the scanner's
+    own report, it is left out (NaN) rather than counted.
+    """
     columns = {}
     for tp, sl, hold in exit_rules():
-        columns[(tp, sl, hold)] = [replay(e, c, r, tp, sl, hold, cost_cfg)["net"] for e, c, r in prepared]
+        results = (replay(e, c, r, tp, sl, hold, cost_cfg) for e, c, r in prepared)
+        columns[(tp, sl, hold)] = [np.nan if x["gross"] > journal.SUSPECT_GROSS else x["net"] for x in results]
     table = pd.DataFrame(columns, index=[e.name for e, _, _ in prepared])
     table.columns = [rule_name(*k) for k in columns]
     return table
@@ -298,19 +304,31 @@ def load_downloads(data_dir: Path = DATA_DIR) -> tuple[pd.DataFrame, pd.DataFram
             pd.concat(candles, ignore_index=True) if candles else pd.DataFrame())
 
 
+def split_by_time(entries: pd.DataFrame, design_share: float = 0.6) -> pd.DataFrame:
+    """Use only the scanner v2 data (5-minute checks from the start, so early rugs are seen);
+    the first `design_share` of it by time is the design period, the rest the test period.
+
+    Week 1 was checked only from 1 hour on, so pools that were rugged within the first hour
+    were not flagged there; mixing it in made rules look far better than they were.
+    """
+    v2 = entries[entries["period"] == "test"].sort_values("seen_at")
+    cut = v2["seen_at"].iloc[int(len(v2) * design_share)]
+    return v2.assign(period=np.where(v2["seen_at"] < cut, "design", "test"))
+
+
 def analyze(cost_cfg: dict, top: int = 15) -> None:
     rng = np.random.default_rng(0)
     entries = tracked_entries()
     fetched, candles = load_downloads()
     done = set(map(tuple, fetched[KEY].astype(str).values))
-    entries = entries[[tuple(map(str, k)) in done for k in entries[KEY].values]]
+    entries = split_by_time(entries[[tuple(map(str, k)) in done for k in entries[KEY].values]])
     checks = pd.concat([journal.read_csv(p) for p in CHECK_FILES if Path(p).exists()], ignore_index=True)
     print(f"Meme rule lab - paper replay at ${cost_cfg['trade_usd']:,} per trade, after costs")
     print(f"  design period: {(entries['period'] == 'design').sum():,} pools, "
           f"test period: {(entries['period'] == 'test').sum():,} pools")
     prepared = prepare(entries, candles, checks)
     entries = pd.DataFrame([e for e, _, _ in prepared])
-    nets = replay_all(prepared, cost_cfg).clip(upper=journal.SUSPECT_GROSS)
+    nets = replay_all(prepared, cost_cfg)
 
     print("\n1) SELLING RULES on all pools (no buying filter): average trade")
     design = entries["period"] == "design"
