@@ -304,7 +304,7 @@ were buys, and a basic safety check (known to GoPlus, not a honeypot, taxes know
 most 10%). Each pool is judged once, when first seen. Replayed on 1-minute candles: buy at
 the next minute's open, sell after 5 minutes or at -10%. `python -m trading_agent.memelab
 forward` shows the result next to comparison pools that meet the same market rules; it is
-also in the Friday report. Pre-set verdict after 100+ trades: PASS only if the typical trade
+also in the Friday report. Pre-set verdict after 100+ trades and at least 7 days: PASS only if the typical trade
 is positive and the 90% range of the average trade is above zero.
 
 ### Step 5: Paper trade

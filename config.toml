@@ -71,7 +71,7 @@ max_change_h1 = 0.50            # price rose less than 50% in the last hour
 [memecoins.strategies.bsc_momentum]  # fixed 2026-11-03 from the rule lab, BEFORE its forward test
 # Lab result (scanner v2 data, Oct 30 - Nov 2): +6.5% design / +10.9% test per trade, entry at the
 # next minute's open, sold after 5 minutes. Only a lead: many of those tokens were unknown to the
-# honeypot checker. Verdict: `python -m trading_agent.memelab forward`, after 100+ trades.
+# honeypot checker. Verdict: `python -m trading_agent.memelab forward`, after 100+ trades AND 7+ days.
 networks = ["bsc"]
 judge_once = true               # judged only when first seen, as in the lab
 security = "basic"              # known to GoPlus, not a honeypot, taxes known and <= max_tax

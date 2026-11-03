@@ -390,13 +390,16 @@ def replay_next_minute(entry, candles: pd.DataFrame, rug_at, tp, sl, hold_min: f
                   tp, sl, hold_min, cost_cfg)
 
 
-def forward(cost_cfg: dict, strategy: str = "bsc_momentum", min_trades: int = 100) -> None:
+def forward(cost_cfg: dict, strategy: str = "bsc_momentum", min_trades: int = 100, min_days: int = 7,
+            now: pd.Timestamp | None = None) -> None:
     """Forward paper test of a strategy fixed in config.toml, replayed on 1-minute candles.
 
-    Pre-registered verdict: PASS only with min_trades+ trades, a positive median trade AND the
-    90% range of the average trade above zero. Compared with comparison-group pools that meet
-    the same market rules but had no safety check.
+    Pre-registered verdict: PASS only after min_days AND min_trades+ trades, with a positive
+    median trade AND the 90% range of the average trade above zero (min_days, so a single
+    day's market mood cannot decide it). Compared with comparison-group pools that meet the
+    same market rules but had no safety check.
     """
+    now = now or pd.Timestamp.now(tz="UTC")
     rng = np.random.default_rng(0)
     rules = cost_cfg["strategies"][strategy]
     start = pd.Timestamp(rules["forward_start"])
@@ -435,8 +438,9 @@ def forward(cost_cfg: dict, strategy: str = "bsc_momentum", min_trades: int = 10
         else:
             print(f"  {name:10}    0 trades yet{f'; {waiting} waiting for candles' if waiting else ''}")
     v = results["strategy"]
-    if len(v) < min_trades:
-        print(f"\n  VERDICT: too early - {len(v)} of {min_trades} trades.")
+    days = (now - start) / pd.Timedelta(days=1)
+    if len(v) < min_trades or days < min_days:
+        print(f"\n  VERDICT: too early - {len(v)} of {min_trades} trades, day {max(days, 0):.1f} of {min_days}.")
         return
     lo, _ = bootstrap_mean(v, rng)
     passed = np.median(v) > 0 and lo > 0
